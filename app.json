@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Змейка",
+    "slug": "snake",
+    "owner": "kanaewvs-team",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0e1116",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kanaewvs.snake"
+    },
+    "android": {
+      "package": "com.kanaewvs.snake",
+      "adaptiveIcon": {
+        "backgroundColor": "#0e1116",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "backgroundColor": "#0e1116"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "33adfbd3-15e7-4e8d-93bd-00b20515c0a3"
+      }
+    }
+  }
+}
