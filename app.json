@@ -10,7 +10,10 @@
     "backgroundColor": "#0e1116",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kanaewvs.snake"
+      "bundleIdentifier": "com.kanaewvs.snake",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.kanaewvs.snake",

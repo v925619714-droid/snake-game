@@ -1,0 +1,12 @@
+name: e2e-now
+
+on:
+  push:
+    branches: ['main']
+
+jobs:
+  maestro_test:
+    type: maestro
+    params:
+      build_id: 4a7a603c-9853-4456-b87d-7498d314bf85
+      flow_path: ['.maestro/snake-smoke.yaml']
