@@ -43,19 +43,8 @@ import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
 import { pushProfile } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
-
-const COLORS = {
-  bg: '#0e1116',
-  board: '#161b22',
-  border: '#222b36',
-  food: '#ff5c5c',
-  text: '#e6edf3',
-  textDim: '#8b949e',
-  btn: '#222b36',
-  btnPressed: '#2d3947',
-  coin: '#f1c40f',
-  accent: '#3ddc84',
-};
+import { LinearGradient } from 'expo-linear-gradient';
+import { palette as COLORS, gradients, tierStyle, elevation } from './src/theme/tokens';
 
 const BEST_KEY = 'snake:best';
 const WALLET_KEY = 'snake:wallet';
@@ -66,7 +55,7 @@ function speedFor(score: number): number {
 
 export default function App() {
   const { width, height } = useWindowDimensions();
-  const boardPx = Math.max(180, Math.floor(Math.min(width - 32, height - 380, 360)));
+  const boardPx = Math.max(176, Math.floor(Math.min(width - 32, height - 408, 348)));
   const cell = boardPx / BOARD;
 
   const [state, setState] = useState<GameState>(() => createInitialState());
@@ -278,76 +267,91 @@ export default function App() {
     );
   }
 
+  const tier = tierFor(profile?.rating ?? 1000);
+
   return (
     <GestureHandlerRootView style={styles.root}>
-      <View style={styles.container}>
-        <StatusBar style="light" />
-        <Text style={styles.title}>Chroma Coil</Text>
+      <LinearGradient colors={gradients.vignette} style={styles.bg}>
+        <View style={styles.container}>
+          <StatusBar style="light" />
 
-        <View style={styles.scoreRow}>
-          <View style={styles.scoreBox}>
-            <Text style={styles.scoreLabel}>Score</Text>
-            <Text style={styles.scoreValue} accessibilityLabel={`score-${state.score}`}>
-              {state.score}
+          <View style={styles.header}>
+            <Text style={styles.title}>
+              <Text style={{ color: COLORS.brand1 }}>CHROMA</Text>
+              <Text style={{ color: COLORS.text }}> </Text>
+              <Text style={{ color: COLORS.brand3 }}>COIL</Text>
             </Text>
+            <Text style={styles.subtitle}>COLOR DUEL ARENA</Text>
           </View>
-          <View style={styles.scoreBox}>
-            <Text style={styles.scoreLabel}>Best</Text>
-            <Text style={styles.scoreValue}>{best}</Text>
-          </View>
-        </View>
 
-        <View style={styles.coinRow}>
-          <View style={styles.coinPill}>
-            <View style={styles.coinDot} />
-            <Text style={styles.coinText} accessibilityLabel={`coins-${wallet.coins}`}>
-              {wallet.coins}
-            </Text>
+          <View style={styles.scoreRow}>
+            <View style={styles.scoreBox}>
+              <Text style={styles.scoreLabel}>SCORE</Text>
+              <Text style={styles.scoreValue} accessibilityLabel={`score-${state.score}`}>
+                {state.score}
+              </Text>
+            </View>
+            <View style={styles.scoreBox}>
+              <Text style={styles.scoreLabel}>BEST</Text>
+              <Text style={[styles.scoreValue, styles.scoreBest]}>{best}</Text>
+            </View>
           </View>
-          <Pressable style={styles.shopBtn} onPress={openShop} accessibilityLabel="shop">
-            <Text style={styles.shopBtnText}>Shop</Text>
-          </Pressable>
+
+          <View style={styles.coinRow}>
+            <View style={styles.coinPill}>
+              <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.coinDot} />
+              <Text style={styles.coinText} accessibilityLabel={`coins-${wallet.coins}`}>
+                {wallet.coins}
+              </Text>
+            </View>
+            <Pressable style={styles.ghostBtn} onPress={openShop} accessibilityLabel="shop">
+              <Text style={styles.ghostText}>Shop</Text>
+            </Pressable>
+            <Pressable
+              style={styles.ctaWrap}
+              onPress={() => {
+                track(EVENTS.matchmakingStart, { mode: 'versus' });
+                setDuelRanked(false);
+                setMode('duel');
+              }}
+              accessibilityLabel="versus"
+            >
+              <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cta}>
+                <Text style={styles.ctaText}>Versus</Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+
           <Pressable
-            style={styles.shopBtn}
+            style={[styles.ctaWrap, styles.wide]}
             onPress={() => {
-              track(EVENTS.matchmakingStart, { mode: 'versus' });
-              setDuelRanked(false);
+              track(EVENTS.matchmakingStart, { mode: 'ranked', rating: profile?.rating ?? 1000 });
+              setDuelRanked(true);
               setMode('duel');
             }}
-            accessibilityLabel="versus"
+            accessibilityLabel="ranked"
           >
-            <Text style={styles.shopBtnText}>Versus</Text>
+            <LinearGradient colors={gradients.ranked} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.rankedCta}>
+              <Text style={styles.rankedText}>
+                Ranked · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tier.name}</Text> {profile?.rating ?? 1000}
+              </Text>
+            </LinearGradient>
           </Pressable>
-        </View>
 
-        <Pressable
-          style={[styles.shopBtn, styles.rankedBtn]}
-          onPress={() => {
-            track(EVENTS.matchmakingStart, { mode: 'ranked', rating: profile?.rating ?? 1000 });
-            setDuelRanked(true);
-            setMode('duel');
-          }}
-          accessibilityLabel="ranked"
-        >
-          <Text style={styles.rankedBtnText}>
-            Ranked · {tierFor(profile?.rating ?? 1000).name} {profile?.rating ?? 1000}
-          </Text>
-        </Pressable>
+          <Pressable
+            style={[styles.ghostBtn, styles.wide, styles.ghostWide]}
+            onPress={() => {
+              track(EVENTS.leaderboardOpen);
+              setMode('leaderboard');
+            }}
+            accessibilityLabel="leaderboard"
+          >
+            <Text style={styles.ghostText}>Leaderboard</Text>
+          </Pressable>
 
-        <Pressable
-          style={styles.shopBtn}
-          onPress={() => {
-            track(EVENTS.leaderboardOpen);
-            setMode('leaderboard');
-          }}
-          accessibilityLabel="leaderboard"
-        >
-          <Text style={styles.shopBtnText}>Leaderboard</Text>
-        </Pressable>
-
-        <GestureDetector gesture={swipe}>
-          <View style={[styles.board, { width: boardPx, height: boardPx }]}>
-            {state.snake.map((p, i) => (
+          <GestureDetector gesture={swipe}>
+            <View style={[styles.board, { width: boardPx, height: boardPx }]}>
+              {state.snake.map((p, i) => (
               <View
                 key={i}
                 style={{
@@ -415,15 +419,16 @@ export default function App() {
           </View>
         </View>
 
-        {showShop && (
-          <ShopOverlay
-            wallet={wallet}
-            onBuy={handleBuy}
-            onSelect={handleSelect}
-            onClose={() => setShowShop(false)}
-          />
-        )}
-      </View>
+          {showShop && (
+            <ShopOverlay
+              wallet={wallet}
+              onBuy={handleBuy}
+              onSelect={handleSelect}
+              onClose={() => setShowShop(false)}
+            />
+          )}
+        </View>
+      </LinearGradient>
     </GestureHandlerRootView>
   );
 }
@@ -523,56 +528,72 @@ function ShopOverlay({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  bg: { flex: 1 },
   container: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Platform.OS === 'web' ? 20 : 44,
-    paddingBottom: 20,
-    gap: 12,
+    paddingTop: Platform.OS === 'web' ? 18 : 44,
+    paddingBottom: 18,
+    gap: 10,
   },
-  title: { color: COLORS.text, fontSize: 28, fontWeight: '700', letterSpacing: 1 },
+  header: { alignItems: 'center', gap: 3 },
+  title: { fontSize: 30, fontWeight: '800', letterSpacing: 3 },
+  subtitle: { color: COLORS.textFaint, fontSize: 10, fontWeight: '600', letterSpacing: 5 },
   scoreRow: { flexDirection: 'row', gap: 12 },
   scoreBox: {
-    backgroundColor: COLORS.board,
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 18,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 22,
     alignItems: 'center',
-    minWidth: 90,
+    minWidth: 100,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlass,
+    ...elevation.card,
   },
-  scoreLabel: { color: COLORS.textDim, fontSize: 12 },
-  scoreValue: { color: COLORS.text, fontSize: 20, fontWeight: '700' },
+  scoreLabel: { color: COLORS.textDim, fontSize: 10, fontWeight: '600', letterSpacing: 2 },
+  scoreValue: { color: COLORS.text, fontSize: 23, fontWeight: '800' },
+  scoreBest: { color: COLORS.brand1 },
   coinRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   coinPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.board,
-    borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  coinDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: COLORS.coin },
-  coinText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
-  shopBtn: {
-    backgroundColor: COLORS.board,
+    gap: 7,
+    backgroundColor: COLORS.surface,
     borderRadius: 999,
     paddingVertical: 6,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.borderGlass,
   },
-  shopBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '500' },
-  rankedBtn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  rankedBtnText: { color: '#08130b', fontSize: 14, fontWeight: '700' },
+  coinDot: { width: 15, height: 15, borderRadius: 8, backgroundColor: COLORS.coin },
+  coinText: { color: COLORS.coinHi, fontSize: 15, fontWeight: '800' },
+  ghostBtn: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlass,
+    alignItems: 'center',
+  },
+  ghostText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  ctaWrap: { borderRadius: 999, overflow: 'hidden', ...elevation.glow },
+  cta: { paddingVertical: 9, paddingHorizontal: 22, alignItems: 'center' },
+  ctaText: { color: COLORS.onAccent, fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
+  wide: { width: '100%', maxWidth: 360 },
+  rankedCta: { paddingVertical: 12, alignItems: 'center' },
+  rankedText: { color: COLORS.onBrand, fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
+  ghostWide: { paddingVertical: 11 },
   board: {
     backgroundColor: COLORS.board,
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: 1.5,
+    borderColor: COLORS.borderGlow,
+    ...elevation.card,
   },
   overlay: {
     position: 'absolute',
@@ -580,27 +601,29 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(14,17,22,0.82)',
+    backgroundColor: 'rgba(7,10,16,0.86)',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 14,
   },
-  overlayTitle: { color: COLORS.text, fontSize: 24, fontWeight: '700' },
+  overlayTitle: { color: COLORS.text, fontSize: 26, fontWeight: '800', letterSpacing: 1 },
   overlaySub: { color: COLORS.textDim, fontSize: 16 },
-  startBtn: { paddingVertical: 12, paddingHorizontal: 32, borderRadius: 999 },
-  startBtnText: { color: '#08130b', fontSize: 18, fontWeight: '700' },
-  hint: { color: COLORS.textDim, fontSize: 13 },
+  startBtn: { paddingVertical: 12, paddingHorizontal: 34, borderRadius: 999 },
+  startBtnText: { color: COLORS.onAccent, fontSize: 18, fontWeight: '800' },
+  hint: { color: COLORS.textFaint, fontSize: 12, letterSpacing: 0.5 },
   dpad: { alignItems: 'center', gap: 10 },
   dpadRow: { flexDirection: 'row', gap: 10 },
   dirBtn: {
-    width: 60,
-    height: 60,
+    width: 58,
+    height: 58,
     borderRadius: 16,
-    backgroundColor: COLORS.btn,
+    backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderGlass,
   },
-  dirBtnPressed: { backgroundColor: COLORS.btnPressed },
+  dirBtnPressed: { backgroundColor: COLORS.surfaceHi },
   dirBtnText: { color: COLORS.text, fontSize: 24 },
   shopOverlay: {
     position: 'absolute',
@@ -608,7 +631,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.66)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
@@ -618,26 +641,29 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     maxHeight: '80%',
     backgroundColor: COLORS.bg,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 16,
     gap: 12,
+    ...elevation.card,
   },
   shopHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  shopTitle: { color: COLORS.text, fontSize: 20, fontWeight: '700' },
+  shopTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', letterSpacing: 1 },
   shopList: { flexGrow: 0 },
   skinRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: COLORS.board,
-    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
     padding: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderGlass,
   },
   skinSwatch: { flexDirection: 'row', gap: 3 },
-  swatchCell: { width: 18, height: 18, borderRadius: 5 },
-  skinName: { color: COLORS.text, fontSize: 16, fontWeight: '500' },
+  swatchCell: { width: 18, height: 18, borderRadius: 6 },
+  skinName: { color: COLORS.text, fontSize: 16, fontWeight: '600' },
   skinPrice: { color: COLORS.textDim, fontSize: 13 },
   skinBtn: {
     backgroundColor: COLORS.accent,
@@ -647,16 +673,16 @@ const styles = StyleSheet.create({
     minWidth: 84,
     alignItems: 'center',
   },
-  skinBtnText: { color: '#08130b', fontSize: 14, fontWeight: '700' },
-  skinBtnActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.accent },
-  skinBtnActiveText: { color: COLORS.accent, fontSize: 14, fontWeight: '700' },
-  skinBtnDisabled: { backgroundColor: COLORS.btn },
-  skinBtnDisabledText: { color: COLORS.textDim },
+  skinBtnText: { color: COLORS.onAccent, fontSize: 14, fontWeight: '800' },
+  skinBtnActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.brand2 },
+  skinBtnActiveText: { color: COLORS.brand2, fontSize: 14, fontWeight: '800' },
+  skinBtnDisabled: { backgroundColor: COLORS.surfaceHi },
+  skinBtnDisabledText: { color: COLORS.textFaint },
   closeBtn: {
-    backgroundColor: COLORS.btn,
+    backgroundColor: COLORS.surfaceHi,
     borderRadius: 999,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  closeBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '500' },
+  closeBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '600' },
 });

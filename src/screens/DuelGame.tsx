@@ -16,13 +16,13 @@ import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
 
 const C = {
-  bg: '#0e1116',
-  board: '#161b22',
-  border: '#222b36',
-  text: '#e6edf3',
-  textDim: '#8b949e',
-  btn: '#222b36',
-  accent: '#3ddc84',
+  bg: '#0B0F17',
+  board: '#121826',
+  border: '#1D2940',
+  text: '#E8F0FB',
+  textDim: '#8395AE',
+  btn: '#121826',
+  accent: '#3DDC84',
 };
 
 const P = [

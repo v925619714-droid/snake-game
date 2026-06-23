@@ -4,12 +4,12 @@ import { tierFor } from '../game/rating';
 import { type LeaderRow, fetchLeaderboard } from '../lib/leaderboard';
 
 const C = {
-  bg: '#0e1116',
-  board: '#161b22',
-  border: '#222b36',
-  text: '#e6edf3',
-  textDim: '#8b949e',
-  accent: '#3ddc84',
+  bg: '#0B0F17',
+  board: '#121826',
+  border: '#1D2940',
+  text: '#E8F0FB',
+  textDim: '#8395AE',
+  accent: '#3DDC84',
 };
 
 export default function Leaderboard({ myId, onBack }: { myId: string; onBack: () => void }) {
