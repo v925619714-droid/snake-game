@@ -2,7 +2,9 @@
 import {
   DUEL_BOARD,
   type DuelState,
+  FOOD_MIN_HEAD_DIST,
   duelNewMatch,
+  ensureFoods,
   duelStep,
   duelTurn,
 } from './duel';
@@ -38,6 +40,30 @@ describe('duelNewMatch', () => {
     expect(s.foods.filter((f) => f.color === 1)).toHaveLength(2);
     expect(DUEL_BOARD).toBe(25);
     expect(s.status).toBe('playing');
+  });
+});
+
+describe('спавн еды', () => {
+  const snakes = [
+    [{ x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 }],
+    [{ x: 3, y: 16 }, { x: 2, y: 16 }, { x: 1, y: 16 }],
+  ];
+
+  test('не более 2 еды каждого цвета', () => {
+    const foods = ensureFoods(snakes, [], Math.random);
+    expect(foods.filter((f) => f.color === 0).length).toBeLessThanOrEqual(2);
+    expect(foods.filter((f) => f.color === 1).length).toBeLessThanOrEqual(2);
+  });
+
+  test('еда не появляется ближе FOOD_MIN_HEAD_DIST к голове своей змейки', () => {
+    for (let i = 0; i < 100; i++) {
+      const foods = ensureFoods(snakes, [], Math.random);
+      for (const f of foods) {
+        const head = snakes[f.color][0];
+        const d = Math.abs(f.pos.x - head.x) + Math.abs(f.pos.y - head.y);
+        expect(d).toBeGreaterThanOrEqual(FOOD_MIN_HEAD_DIST);
+      }
+    }
   });
 });
 

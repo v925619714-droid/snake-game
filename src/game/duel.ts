@@ -10,6 +10,9 @@ export const WINS_NEEDED = 2; // best of 3
 export const MAX_ROUNDS = 7; // предохранитель от вечных ничьих
 export const ROUND_TICKS_CAP = 800; // ~120s at 150ms/tick — anti-stall cap
 const FOOD_PER_COLOR = 2;
+// Еда не должна спавниться слишком близко к голове своей змейки (особенно на старте,
+// чтобы не давать «бесплатный» кусок под носом). Манхэттен-дистанция, с фолбэком.
+export const FOOD_MIN_HEAD_DIST = 6;
 
 export type DuelStatus = 'playing' | 'roundOver' | 'matchOver';
 
@@ -45,11 +48,21 @@ function inBounds(p: Point): boolean {
   return p.x >= 0 && p.x < DUEL_BOARD && p.y >= 0 && p.y < DUEL_BOARD;
 }
 
-function freeCell(occupied: Set<number>, rng: () => number): Point | null {
-  const free: number[] = [];
-  for (let i = 0; i < DUEL_BOARD * DUEL_BOARD; i++) if (!occupied.has(i)) free.push(i);
-  if (free.length === 0) return null;
-  const idx = free[Math.floor(rng() * free.length)];
+// Случайная свободная клетка; по возможности не ближе minDist (манхэттен) к head.
+// Фолбэк на любую свободную, если «далёких» нет (поздняя стадия, тесно).
+function freeCell(occupied: Set<number>, head: Point, minDist: number, rng: () => number): Point | null {
+  const far: number[] = [];
+  const any: number[] = [];
+  for (let i = 0; i < DUEL_BOARD * DUEL_BOARD; i++) {
+    if (occupied.has(i)) continue;
+    any.push(i);
+    const x = i % DUEL_BOARD;
+    const y = Math.floor(i / DUEL_BOARD);
+    if (Math.abs(x - head.x) + Math.abs(y - head.y) >= minDist) far.push(i);
+  }
+  const pool = far.length ? far : any;
+  if (pool.length === 0) return null;
+  const idx = pool[Math.floor(rng() * pool.length)];
   return { x: idx % DUEL_BOARD, y: Math.floor(idx / DUEL_BOARD) };
 }
 
@@ -61,9 +74,10 @@ export function ensureFoods(snakes: Point[][], foods: Food[], rng: () => number)
   for (const f of result) occupied.add(key(f.pos));
 
   for (const color of [0, 1] as const) {
+    const head = snakes[color][0];
     let have = result.filter((f) => f.color === color).length;
     while (have < FOOD_PER_COLOR) {
-      const cell = freeCell(occupied, rng);
+      const cell = freeCell(occupied, head, FOOD_MIN_HEAD_DIST, rng);
       if (!cell) break;
       result.push({ pos: cell, color });
       occupied.add(key(cell));
