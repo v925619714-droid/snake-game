@@ -9,6 +9,9 @@ export type Role = 'host' | 'guest';
 export type Conn = 'idle' | 'searching' | 'connecting' | 'waiting' | 'ready' | 'error';
 
 const TICK_MS = 150;
+// Темп матча против бота: быстрее обычного. Бот безошибочен на любой скорости, а у
+// человека есть время реакции → высокая скорость и есть главный рычаг сложности.
+const BOT_TICK_MS = 100;
 const ROUND_BREAK_MS = 2600;
 // Сколько ждём реального соперника в ranked, прежде чем подставить бота.
 const BOT_FALLBACK_MS = 7000;
@@ -210,7 +213,7 @@ export function useRoom() {
       } else if (next.status === 'matchOver') {
         stopLoop();
       }
-    }, TICK_MS);
+    }, BOT_TICK_MS);
   }, [apply, stopLoop]);
 
   // Старт ranked-матча против бота (фолбэк, когда нет живого соперника).

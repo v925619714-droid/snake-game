@@ -76,9 +76,39 @@ describe('botDirection', () => {
         [{ x: 10, y: 10 }, { x: 9, y: 10 }],
       ],
       dirs: ['down', 'right'],
+      pending: ['down', 'right'],
       foods: [{ pos: { x: 10, y: 2 }, color: 1 }],
     });
     const d = botDirection(s, 1, noMistake);
     expect(d).not.toBe('right'); // справа тело соперника (11,10)
+  });
+
+  test('не заходит в тупик меньше своей длины (flood-fill)', () => {
+    const s = duel({
+      snakes: [
+        [{ x: 1, y: 0 }, { x: 1, y: 1 }], // соперник — стенка, запирающая карман у края
+        // бот длиной 8 едет вверх вдоль x=0
+        [{ x: 0, y: 2 }, { x: 0, y: 3 }, { x: 0, y: 4 }, { x: 0, y: 5 }, { x: 0, y: 6 }, { x: 0, y: 7 }, { x: 0, y: 8 }, { x: 0, y: 9 }],
+      ],
+      dirs: ['right', 'up'],
+      pending: ['right', 'up'],
+      foods: [{ pos: { x: 0, y: 0 }, color: 1 }], // своя еда в кармане (вверху) — приманка
+    });
+    // up уводит в карман {0,1},{0,0} (место=2 < длины 8); right — на открытое поле
+    expect(botDirection(s, 1, noMistake)).toBe('right');
+  });
+
+  test('уходит от лобового столкновения', () => {
+    const s = duel({
+      snakes: [
+        [{ x: 12, y: 10 }, { x: 13, y: 10 }], // соперник едет влево → шагнёт в {11,10}
+        [{ x: 10, y: 10 }, { x: 9, y: 10 }], // бот едет вправо
+      ],
+      dirs: ['left', 'right'],
+      pending: ['left', 'right'],
+      foods: [{ pos: { x: 15, y: 10 }, color: 1 }], // своя еда справа — тянет в лоб
+    });
+    // right ведёт в {11,10} = следующая клетка соперника → бот свернёт (up/down)
+    expect(botDirection(s, 1, noMistake)).not.toBe('right');
   });
 });
