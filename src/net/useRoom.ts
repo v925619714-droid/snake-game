@@ -1,5 +1,6 @@
 import { type RealtimeChannel } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { botDirection } from '../game/bot';
 import { type DuelState, duelNewMatch, duelNextRound, duelStep, duelTurn } from '../game/duel';
 import { type Direction } from '../game/logic';
 import { supabase } from '../lib/supabase';
@@ -9,6 +10,8 @@ export type Conn = 'idle' | 'searching' | 'connecting' | 'waiting' | 'ready' | '
 
 const TICK_MS = 150;
 const ROUND_BREAK_MS = 2600;
+// Сколько ждём реального соперника в ranked, прежде чем подставить бота.
+const BOT_FALLBACK_MS = 7000;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 export function randomCode(): string {
@@ -27,6 +30,7 @@ export function useRoom() {
   const [code, setCode] = useState('');
   const [duel, setDuel] = useState<DuelState | null>(null);
   const [oppRating, setOppRating] = useState<number | null>(null);
+  const [vsBot, setVsBot] = useState(false);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const duelRef = useRef<DuelState | null>(null);
@@ -37,6 +41,8 @@ export function useRoom() {
   const mmRef = useRef<RealtimeChannel | null>(null);
   const matchedRef = useRef(false);
   const rankedRef = useRef(false);
+  const botRef = useRef(false);
+  const botTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const apply = useCallback((s: DuelState | null) => {
     duelRef.current = s;
@@ -179,7 +185,54 @@ export function useRoom() {
     });
   }, [cleanupMM, connect]);
 
+  const clearBotTimer = useCallback(() => {
+    if (botTimerRef.current) {
+      clearTimeout(botTimerRef.current);
+      botTimerRef.current = null;
+    }
+  }, []);
+
+  // Локальный бот-цикл: каждый тик решает ход бота (игрок 1), шагает, без сети.
+  const startBotLoop = useCallback(() => {
+    stopLoop();
+    loopRef.current = setInterval(() => {
+      const cur = duelRef.current;
+      if (!cur || cur.status !== 'playing') return;
+      const next = duelStep(duelTurn(cur, 1, botDirection(cur, 1)));
+      apply(next);
+      if (next.status === 'roundOver') {
+        stopLoop();
+        breakRef.current = setTimeout(() => {
+          const nr = duelNextRound(duelRef.current!);
+          apply(nr);
+          startBotLoop();
+        }, ROUND_BREAK_MS);
+      } else if (next.status === 'matchOver') {
+        stopLoop();
+      }
+    }, TICK_MS);
+  }, [apply, stopLoop]);
+
+  // Старт ranked-матча против бота (фолбэк, когда нет живого соперника).
+  // Игрок — host (player 0, Red), бот — player 1 (Blue). Рейтинг бота близок к нашему.
+  const startBotMatch = useCallback(
+    (myRating: number) => {
+      botRef.current = true;
+      setVsBot(true);
+      roleRef.current = 'host';
+      setRole('host');
+      const r = Math.max(100, Math.round(myRating + (Math.random() * 100 - 50)));
+      setOppRating(r);
+      const init = duelNewMatch();
+      apply(init);
+      setConn('ready');
+      startBotLoop();
+    },
+    [apply, startBotLoop],
+  );
+
   // Ranked-матч: подбор по ближайшему рейтингу + обмен рейтингами.
+  // Если за BOT_FALLBACK_MS живой соперник не нашёлся — подставляем бота.
   const rankedMatch = useCallback(
     (myRating: number) => {
       matchedRef.current = false;
@@ -188,6 +241,8 @@ export function useRoom() {
       setConn('searching');
       setRole(null);
       setOppRating(null);
+      setVsBot(false);
+      botRef.current = false;
       const mm = supabase.channel('mm-ranked', { config: { presence: { key: myId } } });
       mmRef.current = mm;
 
@@ -195,6 +250,7 @@ export function useRoom() {
         if (matchedRef.current) return;
         if (payload.guest === myId) {
           matchedRef.current = true;
+          clearBotTimer();
           setOppRating(typeof payload.hostRating === 'number' ? payload.hostRating : null);
           cleanupMM();
           connect('guest', payload.room as string);
@@ -217,6 +273,7 @@ export function useRoom() {
             }
           }
           matchedRef.current = true;
+          clearBotTimer();
           setOppRating(st[guest]?.[0]?.rating ?? null);
           const room = randomCode();
           mm.send({ type: 'broadcast', event: 'match', payload: { host: myId, guest, room, hostRating: myRating } });
@@ -227,8 +284,16 @@ export function useRoom() {
       mm.subscribe((s) => {
         if (s === 'SUBSCRIBED') mm.track({ id: myId, rating: myRating, t: Date.now() });
       });
+
+      // Фолбэк на бота, если живого соперника нет.
+      botTimerRef.current = setTimeout(() => {
+        if (matchedRef.current) return;
+        matchedRef.current = true;
+        cleanupMM();
+        startBotMatch(myRating);
+      }, BOT_FALLBACK_MS);
     },
-    [cleanupMM, connect],
+    [cleanupMM, connect, clearBotTimer, startBotMatch],
   );
 
   const turn = useCallback(
@@ -246,9 +311,12 @@ export function useRoom() {
   const leave = useCallback(() => {
     stopLoop();
     if (breakRef.current) clearTimeout(breakRef.current);
+    clearBotTimer();
     cleanupMM();
     matchedRef.current = false;
     rankedRef.current = false;
+    botRef.current = false;
+    setVsBot(false);
     setOppRating(null);
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
@@ -260,17 +328,18 @@ export function useRoom() {
     setConn('idle');
     setRole(null);
     setCode('');
-  }, [apply, cleanupMM, stopLoop]);
+  }, [apply, cleanupMM, stopLoop, clearBotTimer]);
 
   useEffect(
     () => () => {
       stopLoop();
       if (breakRef.current) clearTimeout(breakRef.current);
+      if (botTimerRef.current) clearTimeout(botTimerRef.current);
       if (channelRef.current) supabase.removeChannel(channelRef.current);
       if (mmRef.current) supabase.removeChannel(mmRef.current);
     },
     [stopLoop],
   );
 
-  return { conn, role, code, duel, oppRating, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave };
+  return { conn, role, code, duel, oppRating, vsBot, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave };
 }

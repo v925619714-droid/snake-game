@@ -58,7 +58,7 @@ export default function DuelGame({
   const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - 320, 420)));
   const cell = boardPx / DUEL_BOARD;
 
-  const { conn, role, code, duel, oppRating, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
+  const { conn, role, code, duel, oppRating, vsBot, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [ratingChange, setRatingChange] = useState<RatingChange | null>(null);
@@ -140,7 +140,7 @@ export default function DuelGame({
 
     if (cur.status === 'playing' && cur.round === 1 && !matchStartedRef.current) {
       matchStartedRef.current = true;
-      track(EVENTS.matchStart, { mode, role: role ?? 'guest' });
+      track(EVENTS.matchStart, { mode, role: role ?? 'guest', vs_bot: vsBot });
     }
 
     if (prev && prev.status === 'playing' && cur.status === 'playing') {
@@ -159,6 +159,7 @@ export default function DuelGame({
         track(EVENTS.matchEnd, {
           mode,
           role: role ?? 'guest',
+          vs_bot: vsBot,
           result,
           my_wins: cur.matchWins[me],
           opp_wins: cur.matchWins[oppI],
@@ -166,7 +167,7 @@ export default function DuelGame({
         });
       }
     }
-  }, [duel, role]);
+  }, [duel, role, vsBot]);
 
   const handleExit = useCallback(() => {
     leave();
