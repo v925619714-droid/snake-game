@@ -360,14 +360,19 @@ export default function DuelGame({
               </View>
             )),
           )}
-          {duel.foods.map((f, i) => (
-            <View
-              key={`f-${i}`}
-              style={{ position: 'absolute', left: f.pos.x * cell, top: f.pos.y * cell, width: cell, height: cell, padding: 1 }}
-            >
-              <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: P[f.color].food }} />
-            </View>
-          ))}
+          {duel.foods.map((f, i) => {
+            const blink = f.blink ?? 0;
+            // Пока мигает — пульсирует прозрачностью (видно, что еда ещё инертна).
+            const opacity = blink > 0 ? (Math.floor(blink / 2) % 2 === 0 ? 0.25 : 0.7) : 1;
+            return (
+              <View
+                key={`f-${i}`}
+                style={{ position: 'absolute', left: f.pos.x * cell, top: f.pos.y * cell, width: cell, height: cell, padding: 1, opacity }}
+              >
+                <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: P[f.color].food }} />
+              </View>
+            );
+          })}
 
           {duel.status === 'roundOver' && (
             <View style={styles.overlay}>

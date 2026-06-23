@@ -13,6 +13,10 @@ const FOOD_PER_COLOR = 2;
 // Еда не должна спавниться слишком близко к голове своей змейки (особенно на старте,
 // чтобы не давать «бесплатный» кусок под носом). Манхэттен-дистанция, с фолбэком.
 export const FOOD_MIN_HEAD_DIST = 6;
+// Только что появившаяся еда «мигает» и инертна это число тиков: сквозь неё можно
+// проехать без последствий (ни смерти об чужую, ни съедания), потом становится живой.
+// ~3с при обычном темпе 150мс/тик (~2с в бот-матчах 100мс).
+export const FOOD_BLINK_TICKS = 20;
 
 export type DuelStatus = 'playing' | 'roundOver' | 'matchOver';
 
@@ -23,6 +27,7 @@ export type CrashCause = 'wall' | 'wrong_color' | 'self' | 'opponent' | 'head_on
 export interface Food {
   pos: Point;
   color: 0 | 1;
+  blink?: number; // тиков инертности осталось (мигает); undefined/0 = живая еда
 }
 
 export interface DuelState {
@@ -67,7 +72,13 @@ function freeCell(occupied: Set<number>, head: Point, minDist: number, rng: () =
 }
 
 // Дополняет поле едой до FOOD_PER_COLOR каждого цвета.
-export function ensureFoods(snakes: Point[][], foods: Food[], rng: () => number): Food[] {
+// blinkTicks — сколько тиков новая еда «мигает» и инертна (0 = сразу живая).
+export function ensureFoods(
+  snakes: Point[][],
+  foods: Food[],
+  rng: () => number,
+  blinkTicks: number = FOOD_BLINK_TICKS,
+): Food[] {
   const result = [...foods];
   const occupied = new Set<number>();
   for (const s of snakes) for (const p of s) occupied.add(key(p));
@@ -79,7 +90,7 @@ export function ensureFoods(snakes: Point[][], foods: Food[], rng: () => number)
     while (have < FOOD_PER_COLOR) {
       const cell = freeCell(occupied, head, FOOD_MIN_HEAD_DIST, rng);
       if (!cell) break;
-      result.push({ pos: cell, color });
+      result.push({ pos: cell, color, blink: blinkTicks });
       occupied.add(key(cell));
       have++;
     }
@@ -103,7 +114,7 @@ function freshRound(round: number, matchWins: [number, number], rng: () => numbe
     snakes: [s0, s1],
     dirs: ['right', 'right'],
     pending: ['right', 'right'],
-    foods: ensureFoods([s0, s1], [], rng),
+    foods: ensureFoods([s0, s1], [], rng, 0), // стартовая еда сразу живая (видна с начала раунда)
     roundScore: [0, 0],
     matchWins,
     round,
@@ -158,8 +169,11 @@ export function duelStep(state: DuelState, rng: () => number = Math.random): Due
     nextPoint(state.snakes[0][0], state.pending[0]),
     nextPoint(state.snakes[1][0], state.pending[1]),
   ];
-  const eaten = heads.map((h) => state.foods.find((f) => pointsEqual(f.pos, h)));
-  const grow = [Boolean(eaten[0] && eaten[0].color === 0), Boolean(eaten[1] && eaten[1].color === 1)];
+  // Учитываем только «живую» (не мигающую) еду: мигающая инертна — сквозь неё проезжают.
+  const eaten = heads.map((h) =>
+    state.foods.find((f) => pointsEqual(f.pos, h) && (f.blink ?? 0) <= 0),
+  );
+  const grow = [Boolean(eaten[0] && eaten[0]!.color === 0), Boolean(eaten[1] && eaten[1]!.color === 1)];
 
   const crashed = [false, false];
   const causes: [CrashCause | null, CrashCause | null] = [null, null];
@@ -210,7 +224,9 @@ export function duelStep(state: DuelState, rng: () => number = Math.random): Due
     state.roundScore[1] + (grow[1] ? 1 : 0),
   ];
   const eatenKeys = new Set(eaten.filter(Boolean).map((f) => key(f!.pos)));
-  let foods = state.foods.filter((f) => !eatenKeys.has(key(f.pos)));
+  let foods = state.foods
+    .filter((f) => !eatenKeys.has(key(f.pos)))
+    .map((f) => ((f.blink ?? 0) > 0 ? { ...f, blink: (f.blink ?? 0) - 1 } : f)); // тикаем мигание
   foods = ensureFoods(newSnakes, foods, rng);
 
   const base: Partial<DuelState> = { snakes: newSnakes, dirs: [...state.pending] as Direction[], foods, roundScore, tick };

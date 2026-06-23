@@ -111,4 +111,15 @@ describe('botDirection', () => {
     // right ведёт в {11,10} = следующая клетка соперника → бот свернёт (up/down)
     expect(botDirection(s, 1, noMistake)).not.toBe('right');
   });
+
+  test('не боится МИГАЮЩЕЙ чужой еды — проходит сквозь к своей', () => {
+    const s = duel({
+      foods: [
+        { pos: { x: 11, y: 10 }, color: 0, blink: 3 }, // чужая, но мигает → безопасна
+        { pos: { x: 15, y: 10 }, color: 1 }, // своя справа
+      ],
+    });
+    // right ведёт сквозь мигающую чужую еду к своей — бот идёт вправо
+    expect(botDirection(s, 1, noMistake)).toBe('right');
+  });
 });

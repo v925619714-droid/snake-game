@@ -67,6 +67,39 @@ describe('спавн еды', () => {
   });
 });
 
+describe('мигание еды (инертна 3с)', () => {
+  test('мигающая ЧУЖАЯ еда не убивает — проезжаем насквозь', () => {
+    const s = duel({ foods: [{ pos: { x: 6, y: 5 }, color: 1, blink: 3 }] });
+    const n = duelStep(s, rng0);
+    expect(n.status).toBe('playing'); // не crash об чужую мигающую еду
+  });
+
+  test('мигающая СВОЯ еда не съедается (инертна)', () => {
+    const s = duel({ foods: [{ pos: { x: 6, y: 5 }, color: 0, blink: 3 }] });
+    const n = duelStep(s, rng0);
+    expect(n.roundScore[0]).toBe(0); // не съедено
+    expect(n.snakes[0]).toHaveLength(3); // не выросла
+    expect(n.foods.some((f) => f.pos.x === 6 && f.pos.y === 5 && f.color === 0)).toBe(true); // осталась
+  });
+
+  test('живая (не мигающая) еда съедается как обычно', () => {
+    const s = duel({ foods: [{ pos: { x: 6, y: 5 }, color: 0, blink: 0 }] });
+    const n = duelStep(s, rng0);
+    expect(n.roundScore[0]).toBe(1);
+  });
+
+  test('таймер мигания уменьшается каждый тик', () => {
+    const s = duel({ foods: [{ pos: { x: 20, y: 20 }, color: 0, blink: 3 }] });
+    const n = duelStep(s, rng0);
+    expect(n.foods.find((f) => f.pos.x === 20 && f.pos.y === 20)?.blink).toBe(2);
+  });
+
+  test('стартовая еда раунда сразу живая (не мигает)', () => {
+    const s = duelNewMatch(rng0);
+    expect(s.foods.every((f) => (f.blink ?? 0) === 0)).toBe(true);
+  });
+});
+
 describe('duelTurn', () => {
   test('180 игнор, 90 принят', () => {
     const s = duel();
