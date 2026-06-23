@@ -7,6 +7,7 @@ import { type Direction, type Point, isOpposite, nextPoint, pointsEqual } from '
 export const DUEL_BOARD = 25;
 export const ROUND_TARGET = 7;
 export const WINS_NEEDED = 2; // best of 3
+export const MAX_ROUNDS = 7; // предохранитель от вечных ничьих
 export const ROUND_TICKS_CAP = 800; // ~120s at 150ms/tick — anti-stall cap
 const FOOD_PER_COLOR = 2;
 
@@ -114,16 +115,14 @@ export function duelTurn(state: DuelState, player: 0 | 1, dir: Direction): DuelS
 function endRound(state: DuelState, partial: Partial<DuelState>, winner: number): DuelState {
   const matchWins: [number, number] = [...state.matchWins];
   if (winner === 0 || winner === 1) matchWins[winner] += 1;
-  const matchWinner =
-    matchWins[0] >= WINS_NEEDED ? 0 : matchWins[1] >= WINS_NEEDED ? 1 : -1;
-  return {
-    ...state,
-    ...partial,
-    matchWins,
-    roundWinner: winner,
-    matchWinner,
-    status: matchWinner >= 0 ? 'matchOver' : 'roundOver',
-  };
+  let matchWinner = matchWins[0] >= WINS_NEEDED ? 0 : matchWins[1] >= WINS_NEEDED ? 1 : -1;
+  let status: DuelStatus = matchWinner >= 0 ? 'matchOver' : 'roundOver';
+  // Предохранитель: после MAX_ROUNDS завершаем матч (по числу побед, иначе ничья).
+  if (matchWinner < 0 && state.round >= MAX_ROUNDS) {
+    matchWinner = matchWins[0] > matchWins[1] ? 0 : matchWins[1] > matchWins[0] ? 1 : -1;
+    status = 'matchOver';
+  }
+  return { ...state, ...partial, matchWins, roundWinner: winner, matchWinner, status };
 }
 
 export function duelStep(state: DuelState, rng: () => number = Math.random): DuelState {

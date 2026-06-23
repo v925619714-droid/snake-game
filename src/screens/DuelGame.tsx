@@ -11,6 +11,7 @@ import {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { DUEL_BOARD, ROUND_TARGET } from '../game/duel';
 import { type Direction, swipeToDirection } from '../game/logic';
+import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
 
 const C = {
@@ -28,32 +29,73 @@ const P = [
   { body: '#5cc8ff', head: '#b3e8ff', food: '#5cc8ff', name: 'Blue' },
 ];
 
+export interface RatingChange {
+  result: MatchResult;
+  newRating: number;
+  delta: number;
+}
+
 function inviteUrl(code: string): string {
   if (Platform.OS !== 'web' || typeof window === 'undefined' || !code) return '';
   return `${window.location.origin}${window.location.pathname}?room=${code}`;
 }
 
-export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string | null }) {
+export default function DuelGame({
+  onExit,
+  autoJoin,
+  ranked = false,
+  myRating = 1000,
+  onRatingResult,
+}: {
+  onExit: () => void;
+  autoJoin?: string | null;
+  ranked?: boolean;
+  myRating?: number;
+  onRatingResult?: (r: RatingChange) => void;
+}) {
   const { width, height } = useWindowDimensions();
   const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - 320, 420)));
   const cell = boardPx / DUEL_BOARD;
 
-  const { conn, role, code, duel, createRoom, joinRoom, quickMatch, startGame, turn, leave } = useRoom();
+  const { conn, role, code, duel, oppRating, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
-  const autoJoined = useRef(false);
+  const [ratingChange, setRatingChange] = useState<RatingChange | null>(null);
+  const autoStarted = useRef(false);
+  const resultDone = useRef(false);
 
-  // Авто-join по ссылке-приглашению (?room=CODE).
+  // Авто-вход: ranked → поиск по рейтингу; ссылка → join.
   useEffect(() => {
-    if (autoJoined.current) return;
-    if (autoJoin && conn === 'idle') {
-      autoJoined.current = true;
+    if (autoStarted.current || conn !== 'idle') return;
+    if (ranked) {
+      autoStarted.current = true;
+      rankedMatch(myRating);
+    } else if (autoJoin) {
+      autoStarted.current = true;
       joinRoom(autoJoin);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
-  }, [autoJoin, conn, joinRoom]);
+  }, [ranked, autoJoin, conn, rankedMatch, joinRoom, myRating]);
+
+  // Ranked: хост авто-стартует, когда соперник найден.
+  useEffect(() => {
+    if (ranked && role === 'host' && conn === 'ready' && !duel) startGame();
+  }, [ranked, role, conn, duel, startGame]);
+
+  // Ranked: однократно посчитать изменение рейтинга в конце матча.
+  useEffect(() => {
+    if (!ranked || !duel || duel.status !== 'matchOver' || resultDone.current) return;
+    resultDone.current = true;
+    const you = role === 'host' ? 0 : 1;
+    const result: MatchResult = duel.matchWinner === you ? 'win' : duel.matchWinner === -1 ? 'draw' : 'loss';
+    const opp = typeof oppRating === 'number' ? oppRating : myRating;
+    const newRating = applyResult(myRating, opp, result);
+    const change: RatingChange = { result, newRating, delta: newRating - myRating };
+    setRatingChange(change);
+    onRatingResult?.(change);
+  }, [ranked, duel, role, oppRating, myRating, onRatingResult]);
 
   const handleExit = useCallback(() => {
     leave();
@@ -77,7 +119,7 @@ export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; aut
       w: 'up', s: 'down', a: 'left', d: 'right',
     };
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key === ' ' || e.key === 'Enter') && role === 'host' && conn === 'ready' &&
+      if ((e.key === ' ' || e.key === 'Enter') && !ranked && role === 'host' && conn === 'ready' &&
         (!duel || duel.status === 'matchOver')) {
         e.preventDefault();
         startGame();
@@ -91,7 +133,7 @@ export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; aut
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [duel, role, conn, turn, startGame]);
+  }, [duel, role, conn, turn, startGame, ranked]);
 
   const swipe = useMemo(
     () =>
@@ -102,21 +144,36 @@ export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; aut
     [duel, turn],
   );
 
+  const tier = tierFor(myRating);
+
   // ── LOBBY ──
   if (!duel) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Color Duel</Text>
+        <Text style={styles.title}>{ranked ? 'Ranked' : 'Color Duel'}</Text>
 
-        {conn === 'idle' && (
+        {ranked && (conn === 'idle' || conn === 'searching' || conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
+          <View style={styles.lobby}>
+            <View style={styles.rankBox}>
+              <Text style={[styles.rankTier, { color: tier.color }]}>{tier.name}</Text>
+              <Text style={styles.rankRating}>{myRating}</Text>
+            </View>
+            <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
+              {conn === 'ready' ? 'Opponent found! Starting…' : 'Finding a ranked opponent…'}
+            </Text>
+            <Pressable style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
+              <Text style={styles.altBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {!ranked && conn === 'idle' && (
           <View style={styles.lobby}>
             <Pressable style={styles.bigBtn} onPress={quickMatch} accessibilityLabel="quick-match">
               <Text style={styles.bigBtnText}>Quick match</Text>
             </Pressable>
             <Text style={styles.subtle}>random opponent</Text>
-
             <View style={styles.divider} />
-
             <Pressable style={styles.altBtn} onPress={createRoom} accessibilityLabel="create-room">
               <Text style={styles.altBtnText}>Play with a friend</Text>
             </Pressable>
@@ -143,7 +200,7 @@ export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; aut
           </View>
         )}
 
-        {conn === 'searching' && (
+        {!ranked && conn === 'searching' && (
           <View style={styles.lobby}>
             <Text style={styles.status} accessibilityLabel="conn-searching">Searching for an opponent…</Text>
             <Pressable style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
@@ -152,7 +209,7 @@ export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; aut
           </View>
         )}
 
-        {(conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
+        {!ranked && (conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
           <View style={styles.lobby}>
             {role === 'host' && (
               <View style={styles.codeBox}>
@@ -198,12 +255,24 @@ export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; aut
   return (
     <View style={styles.container}>
       <View style={styles.hud}>
-        <ScoreChip label="You" color={mine.head} wins={duel.matchWins[you]} round={duel.roundScore[you]} />
+        <ScoreChip
+          label="You"
+          color={mine.head}
+          wins={duel.matchWins[you]}
+          round={duel.roundScore[you]}
+          rating={ranked ? myRating : undefined}
+        />
         <View style={styles.roundBadge}>
-          <Text style={styles.roundText}>Round {duel.round}</Text>
+          <Text style={styles.roundText}>{ranked ? 'Ranked' : `Round ${duel.round}`}</Text>
           <Text style={styles.roundSub}>first to {ROUND_TARGET}</Text>
         </View>
-        <ScoreChip label="Opp" color={P[opp].head} wins={duel.matchWins[opp]} round={duel.roundScore[opp]} />
+        <ScoreChip
+          label="Opp"
+          color={P[opp].head}
+          wins={duel.matchWins[opp]}
+          round={duel.roundScore[opp]}
+          rating={ranked && typeof oppRating === 'number' ? oppRating : undefined}
+        />
       </View>
       <Text style={[styles.youHint, { color: mine.head }]}>You are {mine.name} — eat {mine.name} food</Text>
 
@@ -239,9 +308,20 @@ export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; aut
 
           {duel.status === 'matchOver' && (
             <View style={styles.overlay}>
-              <Text style={styles.overlayTitle}>{duel.matchWinner === you ? 'You win! 🏆' : 'You lose'}</Text>
+              <Text style={styles.overlayTitle}>
+                {duel.matchWinner === you ? 'You win! 🏆' : duel.matchWinner === -1 ? "It's a draw" : 'You lose'}
+              </Text>
               <Text style={styles.overlaySub}>{duel.matchWins[you]} : {duel.matchWins[opp]}</Text>
-              {role === 'host' ? (
+              {ranked && ratingChange && (
+                <Text style={[styles.ratingDelta, { color: ratingChange.delta >= 0 ? C.accent : '#ff6b6b' }]}>
+                  {ratingChange.delta >= 0 ? '+' : ''}{ratingChange.delta} → {ratingChange.newRating}
+                </Text>
+              )}
+              {ranked ? (
+                <Pressable style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-back">
+                  <Text style={styles.bigBtnText}>Done</Text>
+                </Pressable>
+              ) : role === 'host' ? (
                 <Pressable style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-restart">
                   <Text style={styles.bigBtnText}>Play again</Text>
                 </Pressable>
@@ -278,7 +358,19 @@ function Rules() {
   );
 }
 
-function ScoreChip({ label, color, wins, round }: { label: string; color: string; wins: number; round: number }) {
+function ScoreChip({
+  label,
+  color,
+  wins,
+  round,
+  rating,
+}: {
+  label: string;
+  color: string;
+  wins: number;
+  round: number;
+  rating?: number;
+}) {
   return (
     <View style={styles.chip}>
       <View style={styles.chipTop}>
@@ -286,7 +378,11 @@ function ScoreChip({ label, color, wins, round }: { label: string; color: string
         <Text style={styles.chipLabel}>{label}</Text>
       </View>
       <Text style={styles.chipWins} accessibilityLabel={`${label}-wins-${wins}`}>{wins}</Text>
-      <Text style={styles.chipRound}>{round} this round</Text>
+      {typeof rating === 'number' ? (
+        <Text style={styles.chipRound}>{rating} pts</Text>
+      ) : (
+        <Text style={styles.chipRound}>{round} this round</Text>
+      )}
     </View>
   );
 }
@@ -306,6 +402,9 @@ const styles = StyleSheet.create({
   },
   title: { color: C.text, fontSize: 26, fontWeight: '700', letterSpacing: 1 },
   lobby: { alignItems: 'center', gap: 12, width: '100%', maxWidth: 360 },
+  rankBox: { alignItems: 'center', gap: 2, backgroundColor: C.board, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 40 },
+  rankTier: { fontSize: 22, fontWeight: '700' },
+  rankRating: { color: C.text, fontSize: 30, fontWeight: '700' },
   bigBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 36, alignItems: 'center' },
   bigBtnText: { color: '#08130b', fontSize: 17, fontWeight: '700' },
   altBtn: { backgroundColor: C.board, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 24, borderWidth: 1, borderColor: C.border, alignItems: 'center' },
@@ -345,6 +444,7 @@ const styles = StyleSheet.create({
   },
   overlayTitle: { color: C.text, fontSize: 26, fontWeight: '700' },
   overlaySub: { color: C.textDim, fontSize: 16 },
+  ratingDelta: { fontSize: 20, fontWeight: '700' },
   dpad: { alignItems: 'center', gap: 10 },
   dpadRow: { flexDirection: 'row', gap: 10 },
   dirBtn: { width: 56, height: 56, borderRadius: 16, backgroundColor: C.btn, alignItems: 'center', justifyContent: 'center' },

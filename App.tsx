@@ -38,6 +38,8 @@ import {
 } from './src/game/economy';
 import { SKINS, type Skin, getSkin } from './src/game/skins';
 import DuelGame from './src/screens/DuelGame';
+import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
+import { tierFor } from './src/game/rating';
 
 const COLORS = {
   bg: '#0e1116',
@@ -76,6 +78,8 @@ export default function App() {
     [],
   );
   const [mode, setMode] = useState<'solo' | 'duel'>(initialRoom ? 'duel' : 'solo');
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [duelRanked, setDuelRanked] = useState(false);
   const prevScore = useRef(0);
   const walletLoaded = useRef(false);
   const walletRef = useRef(wallet);
@@ -88,6 +92,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    loadProfile().then(setProfile).catch(() => {});
     AsyncStorage.getItem(BEST_KEY)
       .then((v) => {
         const n = v ? parseInt(v, 10) : 0;
@@ -200,10 +205,33 @@ export default function App() {
     [saveWallet],
   );
 
+  const handleRatingResult = useCallback(
+    (r: { result: 'win' | 'loss' | 'draw'; newRating: number; delta: number }) => {
+      setProfile((p) => {
+        if (!p) return p;
+        const np: Profile = {
+          ...p,
+          rating: r.newRating,
+          wins: p.wins + (r.result === 'win' ? 1 : 0),
+          losses: p.losses + (r.result === 'loss' ? 1 : 0),
+        };
+        saveProfile(np);
+        return np;
+      });
+    },
+    [],
+  );
+
   if (mode === 'duel') {
     return (
       <GestureHandlerRootView style={styles.root}>
-        <DuelGame onExit={() => setMode('solo')} autoJoin={initialRoom} />
+        <DuelGame
+          onExit={() => setMode('solo')}
+          autoJoin={duelRanked ? null : initialRoom}
+          ranked={duelRanked}
+          myRating={profile?.rating ?? 1000}
+          onRatingResult={handleRatingResult}
+        />
       </GestureHandlerRootView>
     );
   }
@@ -239,12 +267,28 @@ export default function App() {
           </Pressable>
           <Pressable
             style={styles.shopBtn}
-            onPress={() => setMode('duel')}
+            onPress={() => {
+              setDuelRanked(false);
+              setMode('duel');
+            }}
             accessibilityLabel="versus"
           >
             <Text style={styles.shopBtnText}>Versus</Text>
           </Pressable>
         </View>
+
+        <Pressable
+          style={[styles.shopBtn, styles.rankedBtn]}
+          onPress={() => {
+            setDuelRanked(true);
+            setMode('duel');
+          }}
+          accessibilityLabel="ranked"
+        >
+          <Text style={styles.rankedBtnText}>
+            Ranked · {tierFor(profile?.rating ?? 1000).name} {profile?.rating ?? 1000}
+          </Text>
+        </Pressable>
 
         <GestureDetector gesture={swipe}>
           <View style={[styles.board, { width: boardPx, height: boardPx }]}>
@@ -466,6 +510,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   shopBtnText: { color: COLORS.text, fontSize: 14, fontWeight: '500' },
+  rankedBtn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  rankedBtnText: { color: '#08130b', fontSize: 14, fontWeight: '700' },
   board: {
     backgroundColor: COLORS.board,
     borderRadius: 14,

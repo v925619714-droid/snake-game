@@ -26,6 +26,7 @@ export function useRoom() {
   const [role, setRole] = useState<Role | null>(null);
   const [code, setCode] = useState('');
   const [duel, setDuel] = useState<DuelState | null>(null);
+  const [oppRating, setOppRating] = useState<number | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const duelRef = useRef<DuelState | null>(null);
@@ -35,6 +36,7 @@ export function useRoom() {
   const peerRef = useRef(false);
   const mmRef = useRef<RealtimeChannel | null>(null);
   const matchedRef = useRef(false);
+  const rankedRef = useRef(false);
 
   const apply = useCallback((s: DuelState | null) => {
     duelRef.current = s;
@@ -177,6 +179,58 @@ export function useRoom() {
     });
   }, [cleanupMM, connect]);
 
+  // Ranked-матч: подбор по ближайшему рейтингу + обмен рейтингами.
+  const rankedMatch = useCallback(
+    (myRating: number) => {
+      matchedRef.current = false;
+      rankedRef.current = true;
+      const myId = randomId();
+      setConn('searching');
+      setRole(null);
+      setOppRating(null);
+      const mm = supabase.channel('mm-ranked', { config: { presence: { key: myId } } });
+      mmRef.current = mm;
+
+      mm.on('broadcast', { event: 'match' }, ({ payload }) => {
+        if (matchedRef.current) return;
+        if (payload.guest === myId) {
+          matchedRef.current = true;
+          setOppRating(typeof payload.hostRating === 'number' ? payload.hostRating : null);
+          cleanupMM();
+          connect('guest', payload.room as string);
+        }
+      });
+      mm.on('presence', { event: 'sync' }, () => {
+        if (matchedRef.current) return;
+        const st = mm.presenceState() as Record<string, Array<{ rating?: number }>>;
+        const ids = Object.keys(st).sort();
+        if (ids.length >= 2 && ids[0] === myId) {
+          const others = ids.slice(1);
+          let guest = others[0];
+          let best = Infinity;
+          for (const oid of others) {
+            const r = st[oid]?.[0]?.rating ?? 1000;
+            const d = Math.abs(r - myRating);
+            if (d < best) {
+              best = d;
+              guest = oid;
+            }
+          }
+          matchedRef.current = true;
+          setOppRating(st[guest]?.[0]?.rating ?? null);
+          const room = randomCode();
+          mm.send({ type: 'broadcast', event: 'match', payload: { host: myId, guest, room, hostRating: myRating } });
+          cleanupMM();
+          connect('host', room);
+        }
+      });
+      mm.subscribe((s) => {
+        if (s === 'SUBSCRIBED') mm.track({ id: myId, rating: myRating, t: Date.now() });
+      });
+    },
+    [cleanupMM, connect],
+  );
+
   const turn = useCallback(
     (dir: Direction) => {
       if (roleRef.current === 'host') {
@@ -194,6 +248,8 @@ export function useRoom() {
     if (breakRef.current) clearTimeout(breakRef.current);
     cleanupMM();
     matchedRef.current = false;
+    rankedRef.current = false;
+    setOppRating(null);
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -216,5 +272,5 @@ export function useRoom() {
     [stopLoop],
   );
 
-  return { conn, role, code, duel, createRoom, joinRoom, quickMatch, startGame, turn, leave };
+  return { conn, role, code, duel, oppRating, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave };
 }
