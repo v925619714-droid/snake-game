@@ -44,7 +44,9 @@ import Leaderboard from './src/screens/Leaderboard';
 import { pushProfile } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { palette as COLORS, gradients, tierStyle, elevation } from './src/theme/tokens';
+import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
+import { palette as COLORS, gradients, tierStyle, elevation, fonts, shade } from './src/theme/tokens';
 
 const BEST_KEY = 'snake:best';
 const WALLET_KEY = 'snake:wallet';
@@ -57,6 +59,13 @@ export default function App() {
   const { width, height } = useWindowDimensions();
   const boardPx = Math.max(176, Math.floor(Math.min(width - 32, height - 408, 348)));
   const cell = boardPx / BOARD;
+
+  const [fontsLoaded] = useFonts({
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_700Bold,
+    Inter_500Medium,
+    Inter_600SemiBold,
+  });
 
   const [state, setState] = useState<GameState>(() => createInitialState());
   const [best, setBest] = useState(0);
@@ -245,6 +254,10 @@ export default function App() {
     [],
   );
 
+  if (!fontsLoaded) {
+    return <View style={styles.boot} />;
+  }
+
   if (mode === 'leaderboard') {
     return (
       <GestureHandlerRootView style={styles.root}>
@@ -351,40 +364,45 @@ export default function App() {
 
           <GestureDetector gesture={swipe}>
             <View style={[styles.board, { width: boardPx, height: boardPx }]}>
-              {state.snake.map((p, i) => (
-              <View
-                key={i}
-                style={{
-                  position: 'absolute',
-                  left: p.x * cell,
-                  top: p.y * cell,
-                  width: cell,
-                  height: cell,
-                  padding: 1,
-                }}
-              >
-                <View
-                  style={{
-                    flex: 1,
-                    borderRadius: cell * 0.28,
-                    backgroundColor: i === 0 ? skin.head : skin.body,
-                  }}
-                />
-              </View>
-            ))}
+              {state.snake.map((p, i) => {
+                const isHead = i === 0;
+                return (
+                  <View
+                    key={i}
+                    style={{ position: 'absolute', left: p.x * cell, top: p.y * cell, width: cell, height: cell, padding: 1 }}
+                  >
+                    <View
+                      style={[
+                        {
+                          flex: 1,
+                          borderRadius: cell * (isHead ? 0.34 : 0.28),
+                          backgroundColor: isHead ? skin.head : shade(skin.body, (i / state.snake.length) * 0.5),
+                        },
+                        isHead && {
+                          shadowColor: skin.head,
+                          shadowOpacity: 0.9,
+                          shadowRadius: 6,
+                          shadowOffset: { width: 0, height: 0 },
+                          elevation: 6,
+                        },
+                      ]}
+                    >
+                      {isHead && (
+                        <>
+                          <View style={[styles.eye, { top: cell * 0.26, left: cell * 0.24, width: cell * 0.16, height: cell * 0.16, borderRadius: cell * 0.08 }]} />
+                          <View style={[styles.eye, { top: cell * 0.26, right: cell * 0.24, width: cell * 0.16, height: cell * 0.16, borderRadius: cell * 0.08 }]} />
+                        </>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
 
-            <View
-              style={{
-                position: 'absolute',
-                left: state.food.x * cell,
-                top: state.food.y * cell,
-                width: cell,
-                height: cell,
-                padding: 2,
-              }}
-            >
-              <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: COLORS.food }} />
-            </View>
+              <View
+                style={{ position: 'absolute', left: state.food.x * cell, top: state.food.y * cell, width: cell, height: cell, padding: 2 }}
+              >
+                <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: COLORS.food, shadowColor: COLORS.food, shadowOpacity: 0.95, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 6 }} />
+              </View>
 
             {state.status !== 'playing' && (
               <View style={styles.overlay}>
@@ -529,6 +547,8 @@ function ShopOverlay({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   bg: { flex: 1 },
+  boot: { flex: 1, backgroundColor: COLORS.bg },
+  eye: { position: 'absolute', backgroundColor: '#06121e' },
   container: {
     flex: 1,
     backgroundColor: 'transparent',
@@ -539,8 +559,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   header: { alignItems: 'center', gap: 3 },
-  title: { fontSize: 30, fontWeight: '800', letterSpacing: 3 },
-  subtitle: { color: COLORS.textFaint, fontSize: 10, fontWeight: '600', letterSpacing: 5 },
+  title: { fontFamily: fonts.display, fontSize: 30, letterSpacing: 3 },
+  subtitle: { fontFamily: fonts.bodyBold, color: COLORS.textFaint, fontSize: 10, letterSpacing: 5 },
   scoreRow: { flexDirection: 'row', gap: 12 },
   scoreBox: {
     backgroundColor: COLORS.surface,
@@ -553,8 +573,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderGlass,
     ...elevation.card,
   },
-  scoreLabel: { color: COLORS.textDim, fontSize: 10, fontWeight: '600', letterSpacing: 2 },
-  scoreValue: { color: COLORS.text, fontSize: 23, fontWeight: '800' },
+  scoreLabel: { fontFamily: fonts.bodyBold, color: COLORS.textDim, fontSize: 10, letterSpacing: 2 },
+  scoreValue: { fontFamily: fonts.num, color: COLORS.text, fontSize: 24 },
   scoreBest: { color: COLORS.brand1 },
   coinRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   coinPill: {
@@ -569,7 +589,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderGlass,
   },
   coinDot: { width: 15, height: 15, borderRadius: 8, backgroundColor: COLORS.coin },
-  coinText: { color: COLORS.coinHi, fontSize: 15, fontWeight: '800' },
+  coinText: { fontFamily: fonts.num, color: COLORS.coinHi, fontSize: 15 },
   ghostBtn: {
     backgroundColor: COLORS.surface,
     borderRadius: 999,
@@ -579,13 +599,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderGlass,
     alignItems: 'center',
   },
-  ghostText: { color: COLORS.text, fontSize: 14, fontWeight: '600' },
+  ghostText: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
   ctaWrap: { borderRadius: 999, overflow: 'hidden', ...elevation.glow },
   cta: { paddingVertical: 9, paddingHorizontal: 22, alignItems: 'center' },
-  ctaText: { color: COLORS.onAccent, fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
+  ctaText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 14, letterSpacing: 0.5 },
   wide: { width: '100%', maxWidth: 360 },
   rankedCta: { paddingVertical: 12, alignItems: 'center' },
-  rankedText: { color: COLORS.onBrand, fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
+  rankedText: { fontFamily: fonts.bodyBold, color: COLORS.onBrand, fontSize: 14, letterSpacing: 0.5 },
   ghostWide: { paddingVertical: 11 },
   board: {
     backgroundColor: COLORS.board,
@@ -606,11 +626,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 14,
   },
-  overlayTitle: { color: COLORS.text, fontSize: 26, fontWeight: '800', letterSpacing: 1 },
-  overlaySub: { color: COLORS.textDim, fontSize: 16 },
+  overlayTitle: { fontFamily: fonts.display, color: COLORS.text, fontSize: 26, letterSpacing: 1 },
+  overlaySub: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 16 },
   startBtn: { paddingVertical: 12, paddingHorizontal: 34, borderRadius: 999 },
-  startBtnText: { color: COLORS.onAccent, fontSize: 18, fontWeight: '800' },
-  hint: { color: COLORS.textFaint, fontSize: 12, letterSpacing: 0.5 },
+  startBtnText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 18 },
+  hint: { fontFamily: fonts.body, color: COLORS.textFaint, fontSize: 12, letterSpacing: 0.5 },
   dpad: { alignItems: 'center', gap: 10 },
   dpadRow: { flexDirection: 'row', gap: 10 },
   dirBtn: {
@@ -649,7 +669,7 @@ const styles = StyleSheet.create({
     ...elevation.card,
   },
   shopHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  shopTitle: { color: COLORS.text, fontSize: 20, fontWeight: '800', letterSpacing: 1 },
+  shopTitle: { fontFamily: fonts.display, color: COLORS.text, fontSize: 20, letterSpacing: 1 },
   shopList: { flexGrow: 0 },
   skinRow: {
     flexDirection: 'row',
@@ -663,8 +683,8 @@ const styles = StyleSheet.create({
   },
   skinSwatch: { flexDirection: 'row', gap: 3 },
   swatchCell: { width: 18, height: 18, borderRadius: 6 },
-  skinName: { color: COLORS.text, fontSize: 16, fontWeight: '600' },
-  skinPrice: { color: COLORS.textDim, fontSize: 13 },
+  skinName: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 16 },
+  skinPrice: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 13 },
   skinBtn: {
     backgroundColor: COLORS.accent,
     borderRadius: 999,
@@ -673,9 +693,9 @@ const styles = StyleSheet.create({
     minWidth: 84,
     alignItems: 'center',
   },
-  skinBtnText: { color: COLORS.onAccent, fontSize: 14, fontWeight: '800' },
+  skinBtnText: { fontFamily: fonts.bodyBold, color: COLORS.onAccent, fontSize: 14 },
   skinBtnActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.brand2 },
-  skinBtnActiveText: { color: COLORS.brand2, fontSize: 14, fontWeight: '800' },
+  skinBtnActiveText: { fontFamily: fonts.bodyBold, color: COLORS.brand2, fontSize: 14 },
   skinBtnDisabled: { backgroundColor: COLORS.surfaceHi },
   skinBtnDisabledText: { color: COLORS.textFaint },
   closeBtn: {
@@ -684,5 +704,5 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
   },
-  closeBtnText: { color: COLORS.text, fontSize: 16, fontWeight: '600' },
+  closeBtnText: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 16 },
 });

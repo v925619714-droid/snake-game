@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0e1116",
+    "backgroundColor": "#0B0F17",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kanaewvs.snake",
@@ -18,7 +18,7 @@
     "android": {
       "package": "com.kanaewvs.snake",
       "adaptiveIcon": {
-        "backgroundColor": "#0e1116",
+        "backgroundColor": "#0B0F17",
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
@@ -27,12 +27,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-font",
       [
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
           "imageWidth": 220,
-          "backgroundColor": "#0e1116"
+          "backgroundColor": "#0B0F17"
         }
       ]
     ],

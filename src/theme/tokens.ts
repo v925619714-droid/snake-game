@@ -58,6 +58,25 @@ export const tierStyle: Record<string, { color: string; grad: readonly [string, 
   Diamond: { color: '#B9F2FF', grad: ['#E8FBFF', '#8FE3F5'] },
 };
 
+// Шрифты (грузятся через useFonts в App). display/num — Space Grotesk, body — Inter.
+export const fonts = {
+  display: 'SpaceGrotesk_700Bold',
+  displayMed: 'SpaceGrotesk_500Medium',
+  num: 'SpaceGrotesk_700Bold',
+  body: 'Inter_500Medium',
+  bodyBold: 'Inter_600SemiBold',
+};
+
+// Затемнение hex-цвета (t: 0 = исходный, 1 = чёрный). Для градиента яркости тела змейки.
+export function shade(hex: string, t: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const f = (c: number) => Math.round(c * (1 - t));
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
+}
+
 export const radius = { sm: 12, md: 14, lg: 18, xl: 24, pill: 999 };
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 

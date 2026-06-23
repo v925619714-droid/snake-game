@@ -14,6 +14,7 @@ import { type Direction, swipeToDirection } from '../game/logic';
 import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
+import { fonts, shade } from '../theme/tokens';
 
 const C = {
   bg: '#0B0F17',
@@ -351,14 +352,39 @@ export default function DuelGame({
       <GestureDetector gesture={swipe}>
         <View style={[styles.board, { width: boardPx, height: boardPx }]}>
           {duel.snakes.map((snake, si) =>
-            snake.map((p, i) => (
-              <View
-                key={`${si}-${i}`}
-                style={{ position: 'absolute', left: p.x * cell, top: p.y * cell, width: cell, height: cell, padding: 0.5 }}
-              >
-                <View style={{ flex: 1, borderRadius: cell * 0.28, backgroundColor: i === 0 ? P[si].head : P[si].body }} />
-              </View>
-            )),
+            snake.map((p, i) => {
+              const isHead = i === 0;
+              return (
+                <View
+                  key={`${si}-${i}`}
+                  style={{ position: 'absolute', left: p.x * cell, top: p.y * cell, width: cell, height: cell, padding: 0.5 }}
+                >
+                  <View
+                    style={[
+                      {
+                        flex: 1,
+                        borderRadius: cell * (isHead ? 0.34 : 0.28),
+                        backgroundColor: isHead ? P[si].head : shade(P[si].body, (i / snake.length) * 0.5),
+                      },
+                      isHead && {
+                        shadowColor: P[si].head,
+                        shadowOpacity: 0.9,
+                        shadowRadius: 5,
+                        shadowOffset: { width: 0, height: 0 },
+                        elevation: 5,
+                      },
+                    ]}
+                  >
+                    {isHead && (
+                      <>
+                        <View style={[styles.eye, { top: cell * 0.26, left: cell * 0.22, width: cell * 0.18, height: cell * 0.18, borderRadius: cell * 0.09 }]} />
+                        <View style={[styles.eye, { top: cell * 0.26, right: cell * 0.22, width: cell * 0.18, height: cell * 0.18, borderRadius: cell * 0.09 }]} />
+                      </>
+                    )}
+                  </View>
+                </View>
+              );
+            }),
           )}
           {duel.foods.map((f, i) => {
             const blink = f.blink ?? 0;
@@ -369,7 +395,7 @@ export default function DuelGame({
                 key={`f-${i}`}
                 style={{ position: 'absolute', left: f.pos.x * cell, top: f.pos.y * cell, width: cell, height: cell, padding: 1, opacity }}
               >
-                <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: P[f.color].food }} />
+                <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: P[f.color].food, shadowColor: P[f.color].food, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 5 }} />
               </View>
             );
           })}
@@ -477,15 +503,15 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center',
     paddingTop: Platform.OS === 'web' ? 16 : 40, paddingBottom: 16, gap: 12,
   },
-  title: { color: C.text, fontSize: 26, fontWeight: '700', letterSpacing: 1 },
+  title: { fontFamily: fonts.display, color: C.text, fontSize: 26, letterSpacing: 1 },
   lobby: { alignItems: 'center', gap: 12, width: '100%', maxWidth: 360 },
-  rankBox: { alignItems: 'center', gap: 2, backgroundColor: C.board, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 40 },
-  rankTier: { fontSize: 22, fontWeight: '700' },
-  rankRating: { color: C.text, fontSize: 30, fontWeight: '700' },
+  rankBox: { alignItems: 'center', gap: 2, backgroundColor: C.board, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 40, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  rankTier: { fontFamily: fonts.display, fontSize: 22 },
+  rankRating: { fontFamily: fonts.num, color: C.text, fontSize: 30 },
   bigBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 36, alignItems: 'center' },
-  bigBtnText: { color: '#08130b', fontSize: 17, fontWeight: '700' },
-  altBtn: { backgroundColor: C.board, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 24, borderWidth: 1, borderColor: C.border, alignItems: 'center' },
-  altBtnText: { color: C.text, fontSize: 15, fontWeight: '500' },
+  bigBtnText: { fontFamily: fonts.display, color: '#06180E', fontSize: 17 },
+  altBtn: { backgroundColor: C.board, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', alignItems: 'center' },
+  altBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 15 },
   subtle: { color: C.textDim, fontSize: 13 },
   divider: { height: 1, backgroundColor: C.border, alignSelf: 'stretch', marginVertical: 4 },
   joinRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
@@ -496,7 +522,7 @@ const styles = StyleSheet.create({
   joinBtn: { backgroundColor: C.board, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20, borderWidth: 1, borderColor: C.border },
   codeBox: { alignItems: 'center', gap: 8, backgroundColor: C.board, borderRadius: 14, padding: 18 },
   codeLabel: { color: C.textDim, fontSize: 13 },
-  codeValue: { color: C.text, fontSize: 40, fontWeight: '700', letterSpacing: 8 },
+  codeValue: { fontFamily: fonts.num, color: '#7CF7D4', fontSize: 40, letterSpacing: 8 },
   copyBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 18 },
   copyBtnText: { color: '#08130b', fontSize: 14, fontWeight: '700' },
   codeHint: { color: C.textDim, fontSize: 13 },
@@ -508,23 +534,24 @@ const styles = StyleSheet.create({
   chipTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipDot: { width: 12, height: 12, borderRadius: 6 },
   chipLabel: { color: C.textDim, fontSize: 12 },
-  chipWins: { color: C.text, fontSize: 22, fontWeight: '700' },
-  chipRound: { color: C.textDim, fontSize: 11 },
+  chipWins: { fontFamily: fonts.num, color: C.text, fontSize: 22 },
+  chipRound: { fontFamily: fonts.body, color: C.textDim, fontSize: 11 },
   roundBadge: { alignItems: 'center' },
-  roundText: { color: C.text, fontSize: 14, fontWeight: '500' },
-  roundSub: { color: C.textDim, fontSize: 11 },
-  youHint: { fontSize: 13, fontWeight: '500' },
-  board: { backgroundColor: C.board, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: C.border },
+  roundText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 14 },
+  roundSub: { fontFamily: fonts.body, color: C.textDim, fontSize: 11 },
+  youHint: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  board: { backgroundColor: '#0C111B', borderRadius: 16, overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(124,247,212,0.20)' },
+  eye: { position: 'absolute', backgroundColor: '#06121e' },
   overlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(14,17,22,0.85)', alignItems: 'center', justifyContent: 'center', gap: 12,
   },
-  overlayTitle: { color: C.text, fontSize: 26, fontWeight: '700' },
-  overlaySub: { color: C.textDim, fontSize: 16 },
-  ratingDelta: { fontSize: 20, fontWeight: '700' },
+  overlayTitle: { fontFamily: fonts.display, color: C.text, fontSize: 26 },
+  overlaySub: { fontFamily: fonts.body, color: C.textDim, fontSize: 16 },
+  ratingDelta: { fontFamily: fonts.num, fontSize: 20 },
   dpad: { alignItems: 'center', gap: 10 },
   dpadRow: { flexDirection: 'row', gap: 10 },
-  dirBtn: { width: 56, height: 56, borderRadius: 16, backgroundColor: C.btn, alignItems: 'center', justifyContent: 'center' },
+  dirBtn: { width: 56, height: 56, borderRadius: 16, backgroundColor: C.btn, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
   dirBtnText: { color: C.text, fontSize: 24 },
   backBtn: { paddingVertical: 8, paddingHorizontal: 20 },
   backText: { color: C.textDim, fontSize: 15 },
