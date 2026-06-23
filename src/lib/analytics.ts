@@ -58,7 +58,7 @@ export function eventBody(apiKey: string, event: EventName, id: string, props: P
 function post(body: Props): void {
   // fire-and-forget; ошибки сети не должны влиять на игру
   try {
-    void fetch(`${HOST}/i/v0/e/`, {
+    void fetch(`${HOST}/capture/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
