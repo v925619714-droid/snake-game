@@ -9,7 +9,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { DUEL_BOARD, ROUND_TARGET } from '../game/duel';
+import { DUEL_BOARD } from '../game/duel';
 import { type Direction, swipeToDirection } from '../game/logic';
 import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
@@ -353,7 +353,7 @@ export default function DuelGame({
         />
         <View style={styles.roundBadge}>
           <Text style={styles.roundText}>{ranked ? 'Ranked' : `Round ${duel.round}`}</Text>
-          <Text style={styles.roundSub}>first to {ROUND_TARGET}</Text>
+          <Text style={styles.roundSub}>don't crash</Text>
         </View>
         <ScoreChip
           label="Opp"
@@ -365,10 +365,16 @@ export default function DuelGame({
       </View>
       <Text style={[styles.youHint, { color: mine.head }]}>You are {mine.name} — eat {mine.name} food</Text>
 
-      <View style={styles.progressTrack}>
-        <View style={[styles.progressL, { width: `${Math.min(100, (duel.roundScore[you] / ROUND_TARGET) * 100)}%`, backgroundColor: mine.head }]} />
-        <View style={[styles.progressR, { width: `${Math.min(100, (duel.roundScore[opp] / ROUND_TARGET) * 100)}%`, backgroundColor: P[opp].head }]} />
-      </View>
+      {(() => {
+        const total = duel.roundScore[you] + duel.roundScore[opp];
+        const myFrac = total === 0 ? 0.5 : duel.roundScore[you] / total;
+        return (
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressL, { width: `${myFrac * 100}%`, backgroundColor: mine.head }]} />
+            <View style={[styles.progressR, { width: `${(1 - myFrac) * 100}%`, backgroundColor: P[opp].head }]} />
+          </View>
+        );
+      })()}
 
       <GestureDetector gesture={swipe}>
         <View style={[styles.board, { width: boardPx, height: boardPx }]}>

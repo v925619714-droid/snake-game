@@ -1,11 +1,11 @@
 // Competitive 2-color duel logic (pure, host-authoritative).
-// Each snake eats ONLY its own color. Eating the opponent's color = instant loss.
-// Crash into wall / opponent / self = loss. Head-on = draw. First to ROUND_TARGET own
-// foods (or opponent's fatal mistake) wins the round. Best-of-3 (first to 2 wins).
+// Each snake eats ONLY its own color (grows + scores). Eating the opponent's color =
+// instant loss. Crash into wall / opponent / self = loss. Head-on = draw.
+// РАУНД ЗАКАНЧИВАЕТСЯ ТОЛЬКО ПРИ КРАШЕ (выживший побеждает) или по тайм-капу
+// (тогда побеждает собравший больше еды). Best-of-3 (first to 2 round wins).
 import { type Direction, type Point, isOpposite, nextPoint, pointsEqual } from './logic';
 
 export const DUEL_BOARD = 25;
-export const ROUND_TARGET = 7;
 export const WINS_NEEDED = 2; // best of 3
 export const MAX_ROUNDS = 7; // предохранитель от вечных ничьих
 export const ROUND_TICKS_CAP = 800; // ~120s at 150ms/tick — anti-stall cap
@@ -231,12 +231,7 @@ export function duelStep(state: DuelState, rng: () => number = Math.random): Due
 
   const base: Partial<DuelState> = { snakes: newSnakes, dirs: [...state.pending] as Direction[], foods, roundScore, tick };
 
-  // достиг цели по очкам
-  if (roundScore[0] >= ROUND_TARGET || roundScore[1] >= ROUND_TARGET) {
-    const winner = roundScore[0] > roundScore[1] ? 0 : roundScore[1] > roundScore[0] ? 1 : -1;
-    return endRound(state, base, winner);
-  }
-  // тайм-кап
+  // Раунд НЕ заканчивается по числу собранной еды — только краш (выше) или тайм-кап.
   if (tick >= ROUND_TICKS_CAP) {
     const winner = roundScore[0] > roundScore[1] ? 0 : roundScore[1] > roundScore[0] ? 1 : -1;
     return endRound(state, base, winner);

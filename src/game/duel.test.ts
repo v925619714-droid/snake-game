@@ -237,17 +237,26 @@ describe('duelStep — причины краша (causes)', () => {
 });
 
 describe('duelStep — счёт и матч', () => {
-  test('достиг 7 своих → победа в раунде', () => {
+  test('сбор еды НЕ заканчивает раунд (только краш/тайм-кап)', () => {
     const s = duel({ roundScore: [6, 0], foods: [{ pos: { x: 6, y: 5 }, color: 0 }] });
     const n = duelStep(s, rng0);
-    expect(n.roundWinner).toBe(0);
-    expect(n.matchWins).toEqual([1, 0]);
-    expect(n.status).toBe('roundOver');
+    expect(n.roundScore[0]).toBe(7); // съел седьмую — но раунд продолжается
+    expect(n.status).toBe('playing');
   });
 
-  test('вторая победа → матч окончен', () => {
-    const s = duel({ matchWins: [1, 0], roundScore: [6, 0], foods: [{ pos: { x: 6, y: 5 }, color: 0 }] });
+  test('вторая победа (через краш соперника) → матч окончен', () => {
+    // matchWins[1,0]; снейк1 врезается в стену → раунд игроку 0 → матч окончен
+    const s = duel({
+      matchWins: [1, 0],
+      snakes: [
+        [{ x: 5, y: 5 }, { x: 4, y: 5 }],
+        [{ x: 24, y: 20 }, { x: 23, y: 20 }],
+      ],
+      dirs: ['right', 'right'],
+      pending: ['right', 'right'],
+    });
     const n = duelStep(s, rng0);
+    expect(n.roundWinner).toBe(0);
     expect(n.matchWins).toEqual([2, 0]);
     expect(n.status).toBe('matchOver');
     expect(n.matchWinner).toBe(0);
