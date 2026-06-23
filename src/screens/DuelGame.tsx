@@ -15,7 +15,7 @@ import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
 import { fonts, shade } from '../theme/tokens';
-import { TouchScale, FadePop } from '../ui/anim';
+import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import * as Haptics from 'expo-haptics';
 
 const C = {
@@ -365,6 +365,11 @@ export default function DuelGame({
       </View>
       <Text style={[styles.youHint, { color: mine.head }]}>You are {mine.name} — eat {mine.name} food</Text>
 
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressL, { width: `${Math.min(100, (duel.roundScore[you] / ROUND_TARGET) * 100)}%`, backgroundColor: mine.head }]} />
+        <View style={[styles.progressR, { width: `${Math.min(100, (duel.roundScore[opp] / ROUND_TARGET) * 100)}%`, backgroundColor: P[opp].head }]} />
+      </View>
+
       <GestureDetector gesture={swipe}>
         <View style={[styles.board, { width: boardPx, height: boardPx }]}>
           {duel.snakes.map((snake, si) =>
@@ -429,6 +434,7 @@ export default function DuelGame({
 
           {duel.status === 'matchOver' && (
             <View style={styles.overlay}>
+              {duel.matchWinner === you && <Confetti />}
               <FadePop style={styles.overlayInner}>
                 <Text style={styles.overlayTitle}>
                   {duel.matchWinner === you ? 'You win!' : duel.matchWinner === -1 ? "It's a draw" : 'You lose'}
@@ -495,12 +501,12 @@ function ScoreChip({
   rating?: number;
 }) {
   return (
-    <View style={styles.chip}>
+    <View style={[styles.chip, { borderColor: color }]}>
       <View style={styles.chipTop}>
-        <View style={[styles.chipDot, { backgroundColor: color }]} />
+        <View style={[styles.chipDot, { backgroundColor: color, shadowColor: color, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } }]} />
         <Text style={styles.chipLabel}>{label}</Text>
       </View>
-      <Text style={styles.chipWins} accessibilityLabel={`${label}-wins-${wins}`}>{wins}</Text>
+      <Text style={[styles.chipWins, { color }]} accessibilityLabel={`${label}-wins-${wins}`}>{wins}</Text>
       {typeof rating === 'number' ? (
         <Text style={styles.chipRound}>{rating} pts</Text>
       ) : (
@@ -550,7 +556,10 @@ const styles = StyleSheet.create({
   rules: { gap: 4, alignItems: 'center', marginTop: 4 },
   rulesText: { color: C.textDim, fontSize: 13, textAlign: 'center' },
   hud: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  chip: { backgroundColor: C.board, borderRadius: 12, paddingVertical: 6, paddingHorizontal: 16, alignItems: 'center', minWidth: 92 },
+  chip: { backgroundColor: C.board, borderRadius: 12, paddingVertical: 6, paddingHorizontal: 16, alignItems: 'center', minWidth: 92, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  progressTrack: { width: '100%', maxWidth: 420, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
+  progressL: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 4 },
+  progressR: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 4 },
   chipTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipDot: { width: 12, height: 12, borderRadius: 6 },
   chipLabel: { color: C.textDim, fontSize: 12 },

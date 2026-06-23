@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { tierFor } from '../game/rating';
 import { type LeaderRow, fetchLeaderboard } from '../lib/leaderboard';
-import { fonts } from '../theme/tokens';
+import { LinearGradient } from 'expo-linear-gradient';
+import { fonts, tierStyle } from '../theme/tokens';
 import { TouchScale } from '../ui/anim';
 
 const C = {
@@ -39,17 +40,30 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
           {rows.map((r, i) => {
             const t = tierFor(r.rating);
             const me = r.id === myId;
+            const top = i < 3;
+            const medal = ['#FFD75E', '#D8DEE9', '#E0A86A'][i];
+            const tail = r.name.includes('-') ? r.name.split('-').pop() ?? r.name : r.name;
+            const initials = (tail.replace(/[^A-Za-z0-9]/g, '').slice(0, 2) || '?').toUpperCase();
+            const grad = tierStyle[t.name]?.grad ?? (['#888', '#555'] as const);
             return (
               <View key={r.id} style={[styles.row, me && styles.rowMe]}>
-                <Text style={styles.rank}>{i + 1}</Text>
+                <View style={[styles.rankWrap, top && { borderColor: medal, backgroundColor: 'rgba(255,255,255,0.05)' }]}>
+                  <Text style={[styles.rank, top && { color: medal }]}>{i + 1}</Text>
+                </View>
+                <View style={[styles.avatar, { borderColor: t.color }]}>
+                  <Text style={[styles.avatarText, { color: t.color }]}>{initials}</Text>
+                </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>
+                  <Text style={styles.name} numberOfLines={1}>
                     {r.name}
                     {me ? ' (you)' : ''}
                   </Text>
-                  <Text style={[styles.tier, { color: t.color }]}>
-                    {t.name} · {r.wins}W {r.losses}L
-                  </Text>
+                  <View style={styles.tierRow}>
+                    <LinearGradient colors={grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.tierPill}>
+                      <Text style={styles.tierPillText}>{t.name}</Text>
+                    </LinearGradient>
+                    <Text style={styles.wl}>{r.wins}W {r.losses}L</Text>
+                  </View>
                 </View>
                 <Text style={styles.rating}>{r.rating}</Text>
               </View>
@@ -92,9 +106,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.06)',
   },
   rowMe: { borderWidth: 1, borderColor: '#7CF7D4' },
-  rank: { fontFamily: fonts.num, color: C.textDim, fontSize: 16, width: 28, textAlign: 'center' },
+  rankWrap: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
+  rank: { fontFamily: fonts.num, color: C.textDim, fontSize: 15 },
+  avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, backgroundColor: 'rgba(255,255,255,0.04)' },
+  avatarText: { fontFamily: fonts.bodyBold, fontSize: 13 },
   name: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 16 },
-  tier: { fontFamily: fonts.body, fontSize: 13 },
+  tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
+  tierPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  tierPillText: { fontFamily: fonts.bodyBold, fontSize: 11, color: '#0A1020' },
+  wl: { fontFamily: fonts.body, color: C.textDim, fontSize: 12 },
   rating: { fontFamily: fonts.num, color: C.text, fontSize: 20 },
   btn: { backgroundColor: C.board, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
   btnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 15 },
