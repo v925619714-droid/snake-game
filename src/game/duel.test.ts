@@ -25,6 +25,7 @@ function duel(p: Partial<DuelState> = {}): DuelState {
     status: 'playing',
     roundWinner: -1,
     matchWinner: -1,
+    causes: [null, null],
     ...p,
   };
 }
@@ -106,6 +107,73 @@ describe('duelStep — столкновения', () => {
     expect(n.status).toBe('roundOver');
     expect(n.roundWinner).toBe(-1);
     expect(n.matchWins).toEqual([0, 0]);
+  });
+});
+
+describe('duelStep — причины краша (causes)', () => {
+  test('стена → wall у врезавшегося', () => {
+    const s = duel({
+      snakes: [
+        [{ x: 24, y: 5 }, { x: 23, y: 5 }],
+        [{ x: 5, y: 20 }, { x: 4, y: 20 }],
+      ],
+    });
+    const n = duelStep(s, rng0);
+    expect(n.causes[0]).toBe('wall');
+    expect(n.causes[1]).toBeNull();
+  });
+
+  test('чужой цвет → wrong_color', () => {
+    const s = duel({ foods: [{ pos: { x: 6, y: 5 }, color: 1 }] });
+    const n = duelStep(s, rng0);
+    expect(n.causes[0]).toBe('wrong_color');
+  });
+
+  test('въезд в соперника → opponent', () => {
+    const s = duel({
+      snakes: [
+        [{ x: 5, y: 5 }, { x: 4, y: 5 }],
+        [{ x: 6, y: 5 }, { x: 7, y: 5 }, { x: 8, y: 5 }],
+      ],
+      dirs: ['right', 'right'],
+      pending: ['right', 'up'],
+    });
+    const n = duelStep(s, rng0);
+    expect(n.causes[0]).toBe('opponent');
+  });
+
+  test('въезд в себя → self', () => {
+    // змейка достаточной длины, разворот в тело даёт самопересечение
+    const s = duel({
+      snakes: [
+        [{ x: 5, y: 5 }, { x: 5, y: 6 }, { x: 4, y: 6 }, { x: 4, y: 5 }],
+        [{ x: 5, y: 20 }, { x: 4, y: 20 }],
+      ],
+      dirs: ['up', 'right'],
+      pending: ['left', 'right'],
+      foods: [{ pos: { x: 4, y: 5 }, color: 0 }], // рост, чтобы хвост не освободил клетку
+    });
+    const n = duelStep(s, rng0);
+    expect(n.causes[0]).toBe('self');
+  });
+
+  test('лоб в лоб → head_on у обоих', () => {
+    const s = duel({
+      snakes: [
+        [{ x: 5, y: 5 }, { x: 4, y: 5 }],
+        [{ x: 7, y: 5 }, { x: 8, y: 5 }],
+      ],
+      dirs: ['right', 'left'],
+      pending: ['right', 'left'],
+    });
+    const n = duelStep(s, rng0);
+    expect(n.causes).toEqual(['head_on', 'head_on']);
+  });
+
+  test('победа по очкам → причин нет', () => {
+    const s = duel({ roundScore: [6, 0], foods: [{ pos: { x: 6, y: 5 }, color: 0 }] });
+    const n = duelStep(s, rng0);
+    expect(n.causes).toEqual([null, null]);
   });
 });
 

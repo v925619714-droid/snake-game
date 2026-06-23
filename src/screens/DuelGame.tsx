@@ -13,6 +13,7 @@ import { DUEL_BOARD, ROUND_TARGET } from '../game/duel';
 import { type Direction, swipeToDirection } from '../game/logic';
 import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
+import { EVENTS, track } from '../lib/analytics';
 
 const C = {
   bg: '#0e1116',
@@ -63,6 +64,10 @@ export default function DuelGame({
   const [ratingChange, setRatingChange] = useState<RatingChange | null>(null);
   const autoStarted = useRef(false);
   const resultDone = useRef(false);
+  // Лейбл режима для аналитики (уточняется при выборе действия в лобби).
+  const modeRef = useRef<'quick' | 'friend' | 'ranked'>(ranked ? 'ranked' : autoJoin ? 'friend' : 'quick');
+  const prevDuelRef = useRef<typeof duel>(null);
+  const matchStartedRef = useRef(false);
 
   // Авто-вход: ranked → поиск по рейтингу; ссылка → join.
   useEffect(() => {
@@ -72,6 +77,8 @@ export default function DuelGame({
       rankedMatch(myRating);
     } else if (autoJoin) {
       autoStarted.current = true;
+      modeRef.current = 'friend';
+      track(EVENTS.matchmakingStart, { mode: 'friend', via: 'invite' });
       joinRoom(autoJoin);
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.history.replaceState({}, '', window.location.pathname);
@@ -96,6 +103,70 @@ export default function DuelGame({
     setRatingChange(change);
     onRatingResult?.(change);
   }, [ranked, duel, role, oppRating, myRating, onRatingResult]);
+
+  // Действия лобби с разметкой режима для аналитики.
+  const onQuick = useCallback(() => {
+    modeRef.current = 'quick';
+    track(EVENTS.matchmakingStart, { mode: 'quick' });
+    quickMatch();
+  }, [quickMatch]);
+
+  const onCreate = useCallback(() => {
+    modeRef.current = 'friend';
+    track(EVENTS.matchmakingStart, { mode: 'friend', via: 'host' });
+    createRoom();
+  }, [createRoom]);
+
+  const onJoinCode = useCallback(() => {
+    if (joinCode.length < 3) return;
+    modeRef.current = 'friend';
+    track(EVENTS.matchmakingStart, { mode: 'friend', via: 'code' });
+    joinRoom(joinCode);
+  }, [joinCode, joinRoom]);
+
+  // Диффер состояний дуэли → события матча/раунда/еды/фатальных ошибок.
+  useEffect(() => {
+    const prev = prevDuelRef.current;
+    const cur = duel;
+    prevDuelRef.current = cur;
+    if (!cur) {
+      matchStartedRef.current = false;
+      return;
+    }
+    const mode = modeRef.current;
+    const me = role === 'host' ? 0 : 1;
+    const oppI = me === 0 ? 1 : 0;
+    const myColor = me === 0 ? 'red' : 'blue';
+
+    if (cur.status === 'playing' && cur.round === 1 && !matchStartedRef.current) {
+      matchStartedRef.current = true;
+      track(EVENTS.matchStart, { mode, role: role ?? 'guest' });
+    }
+
+    if (prev && prev.status === 'playing' && cur.status === 'playing') {
+      const d = cur.roundScore[me] - prev.roundScore[me];
+      if (d > 0) track(EVENTS.foodEaten, { mode, color: myColor, correct: true, count: d });
+    }
+
+    if (prev && prev.status === 'playing' && cur.status !== 'playing') {
+      const cause = cur.causes[me];
+      if (cause) track(EVENTS.fatalMistake, { mode, type: cause, round: cur.round });
+      const outcome = cur.roundWinner === -1 ? 'draw' : cur.roundWinner === me ? 'win' : 'loss';
+      track(EVENTS.roundEnd, { mode, round: cur.round, outcome });
+      if (cur.status === 'matchOver') {
+        matchStartedRef.current = false;
+        const result = cur.matchWinner === -1 ? 'draw' : cur.matchWinner === me ? 'win' : 'loss';
+        track(EVENTS.matchEnd, {
+          mode,
+          role: role ?? 'guest',
+          result,
+          my_wins: cur.matchWins[me],
+          opp_wins: cur.matchWins[oppI],
+          rounds: cur.round,
+        });
+      }
+    }
+  }, [duel, role]);
 
   const handleExit = useCallback(() => {
     leave();
@@ -169,12 +240,12 @@ export default function DuelGame({
 
         {!ranked && conn === 'idle' && (
           <View style={styles.lobby}>
-            <Pressable style={styles.bigBtn} onPress={quickMatch} accessibilityLabel="quick-match">
+            <Pressable style={styles.bigBtn} onPress={onQuick} accessibilityLabel="quick-match">
               <Text style={styles.bigBtnText}>Quick match</Text>
             </Pressable>
             <Text style={styles.subtle}>random opponent</Text>
             <View style={styles.divider} />
-            <Pressable style={styles.altBtn} onPress={createRoom} accessibilityLabel="create-room">
+            <Pressable style={styles.altBtn} onPress={onCreate} accessibilityLabel="create-room">
               <Text style={styles.altBtnText}>Play with a friend</Text>
             </Pressable>
             <View style={styles.joinRow}>
@@ -190,7 +261,7 @@ export default function DuelGame({
               />
               <Pressable
                 style={styles.joinBtn}
-                onPress={() => joinCode.length >= 3 && joinRoom(joinCode)}
+                onPress={onJoinCode}
                 accessibilityLabel="join-room"
               >
                 <Text style={styles.altBtnText}>Join</Text>

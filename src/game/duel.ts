@@ -13,6 +13,10 @@ const FOOD_PER_COLOR = 2;
 
 export type DuelStatus = 'playing' | 'roundOver' | 'matchOver';
 
+// Причина гибели змейки в раунде (для аналитики). null = раунд завершён не крашем
+// (по очкам/тайм-капу) или этот игрок не разбивался.
+export type CrashCause = 'wall' | 'wrong_color' | 'self' | 'opponent' | 'head_on';
+
 export interface Food {
   pos: Point;
   color: 0 | 1;
@@ -30,6 +34,7 @@ export interface DuelState {
   status: DuelStatus;
   roundWinner: number; // -1 draw, 0/1 winner
   matchWinner: number; // -1 none, 0/1
+  causes: [CrashCause | null, CrashCause | null]; // причина краша по игрокам в последнем раунде
 }
 
 function key(p: Point): number {
@@ -92,6 +97,7 @@ function freshRound(round: number, matchWins: [number, number], rng: () => numbe
     status: 'playing',
     roundWinner: -1,
     matchWinner: -1,
+    causes: [null, null],
   };
 }
 
@@ -112,7 +118,12 @@ export function duelTurn(state: DuelState, player: 0 | 1, dir: Direction): DuelS
   return { ...state, pending };
 }
 
-function endRound(state: DuelState, partial: Partial<DuelState>, winner: number): DuelState {
+function endRound(
+  state: DuelState,
+  partial: Partial<DuelState>,
+  winner: number,
+  causes: [CrashCause | null, CrashCause | null] = [null, null],
+): DuelState {
   const matchWins: [number, number] = [...state.matchWins];
   if (winner === 0 || winner === 1) matchWins[winner] += 1;
   let matchWinner = matchWins[0] >= WINS_NEEDED ? 0 : matchWins[1] >= WINS_NEEDED ? 1 : -1;
@@ -122,7 +133,7 @@ function endRound(state: DuelState, partial: Partial<DuelState>, winner: number)
     matchWinner = matchWins[0] > matchWins[1] ? 0 : matchWins[1] > matchWins[0] ? 1 : -1;
     status = 'matchOver';
   }
-  return { ...state, ...partial, matchWins, roundWinner: winner, matchWinner, status };
+  return { ...state, ...partial, matchWins, roundWinner: winner, matchWinner, status, causes };
 }
 
 export function duelStep(state: DuelState, rng: () => number = Math.random): DuelState {
@@ -137,34 +148,41 @@ export function duelStep(state: DuelState, rng: () => number = Math.random): Due
   const grow = [Boolean(eaten[0] && eaten[0].color === 0), Boolean(eaten[1] && eaten[1].color === 1)];
 
   const crashed = [false, false];
+  const causes: [CrashCause | null, CrashCause | null] = [null, null];
   for (let i = 0; i < 2; i++) {
     const h = heads[i];
     if (!inBounds(h)) {
       crashed[i] = true;
+      causes[i] = 'wall';
       continue;
     }
     // съел чужой цвет — фатально
     if (eaten[i] && eaten[i]!.color !== i) {
       crashed[i] = true;
+      causes[i] = 'wrong_color';
       continue;
     }
     const ownBody = grow[i] ? state.snakes[i] : state.snakes[i].slice(0, -1);
     if (ownBody.some((p) => pointsEqual(p, h))) {
       crashed[i] = true;
+      causes[i] = 'self';
       continue;
     }
     if (state.snakes[1 - i].some((p) => pointsEqual(p, h))) {
       crashed[i] = true;
+      causes[i] = 'opponent';
     }
   }
   if (pointsEqual(heads[0], heads[1])) {
     crashed[0] = true;
     crashed[1] = true;
+    causes[0] = 'head_on';
+    causes[1] = 'head_on';
   }
 
   if (crashed[0] || crashed[1]) {
     const winner = crashed[0] && crashed[1] ? -1 : crashed[0] ? 1 : 0;
-    return endRound(state, {}, winner);
+    return endRound(state, {}, winner, causes);
   }
 
   // ходы

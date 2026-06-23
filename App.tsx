@@ -42,6 +42,7 @@ import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
 import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
 import { pushProfile } from './src/lib/leaderboard';
+import { EVENTS, identify, track } from './src/lib/analytics';
 
 const COLORS = {
   bg: '#0e1116',
@@ -94,10 +95,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
     loadProfile()
       .then((p) => {
         setProfile(p);
         pushProfile(p);
+        identify(p.id, {
+          name: p.name,
+          rating: p.rating,
+          wins: p.wins,
+          losses: p.losses,
+          tier: tierFor(p.rating).name,
+        });
       })
       .catch(() => {});
     AsyncStorage.getItem(BEST_KEY)
@@ -139,6 +148,7 @@ export default function App() {
 
   useEffect(() => {
     if (state.status !== 'over') return;
+    track(EVENTS.soloGameOver, { score: state.score, best, new_best: state.score > best });
     setBest((b) => {
       const next = Math.max(b, state.score);
       if (next !== b) AsyncStorage.setItem(BEST_KEY, String(next)).catch(() => {});
@@ -155,7 +165,11 @@ export default function App() {
   }, []);
 
   const handleStart = useCallback(() => {
-    setState((s) => (s.status === 'over' ? startGame(createInitialState()) : startGame(s)));
+    setState((s) => {
+      if (s.status === 'playing') return s;
+      track(EVENTS.soloStart, { restart: s.status === 'over' });
+      return s.status === 'over' ? startGame(createInitialState()) : startGame(s);
+    });
   }, []);
 
   useEffect(() => {
@@ -191,12 +205,16 @@ export default function App() {
 
   const openShop = useCallback(() => {
     if (walletLoaded.current) saveWallet(walletRef.current);
+    track(EVENTS.shopOpen, { coins: walletRef.current.coins, owned: walletRef.current.owned.length });
     setShowShop(true);
   }, [saveWallet]);
 
   const handleBuy = useCallback(
     (s: Skin) => {
       const nw = buySkin(walletRef.current, s);
+      if (nw !== walletRef.current) {
+        track(EVENTS.skinPurchased, { skin: s.id, price: s.price, coins_after: nw.coins });
+      }
       setWallet(nw);
       saveWallet(nw);
     },
@@ -206,6 +224,7 @@ export default function App() {
   const handleSelect = useCallback(
     (id: string) => {
       const nw = selectSkin(walletRef.current, id);
+      track(EVENTS.skinSelected, { skin: id });
       setWallet(nw);
       saveWallet(nw);
     },
@@ -222,6 +241,13 @@ export default function App() {
           wins: p.wins + (r.result === 'win' ? 1 : 0),
           losses: p.losses + (r.result === 'loss' ? 1 : 0),
         };
+        track(EVENTS.ratingChange, {
+          result: r.result,
+          old_rating: p.rating,
+          new_rating: r.newRating,
+          delta: r.delta,
+          tier: tierFor(r.newRating).name,
+        });
         saveProfile(np);
         pushProfile(np);
         return np;
@@ -284,6 +310,7 @@ export default function App() {
           <Pressable
             style={styles.shopBtn}
             onPress={() => {
+              track(EVENTS.matchmakingStart, { mode: 'versus' });
               setDuelRanked(false);
               setMode('duel');
             }}
@@ -296,6 +323,7 @@ export default function App() {
         <Pressable
           style={[styles.shopBtn, styles.rankedBtn]}
           onPress={() => {
+            track(EVENTS.matchmakingStart, { mode: 'ranked', rating: profile?.rating ?? 1000 });
             setDuelRanked(true);
             setMode('duel');
           }}
@@ -308,7 +336,10 @@ export default function App() {
 
         <Pressable
           style={styles.shopBtn}
-          onPress={() => setMode('leaderboard')}
+          onPress={() => {
+            track(EVENTS.leaderboardOpen);
+            setMode('leaderboard');
+          }}
           accessibilityLabel="leaderboard"
         >
           <Text style={styles.shopBtnText}>Leaderboard</Text>
