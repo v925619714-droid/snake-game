@@ -40,6 +40,8 @@ import { SKINS, type Skin, getSkin } from './src/game/skins';
 import DuelGame from './src/screens/DuelGame';
 import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
 import { tierFor } from './src/game/rating';
+import Leaderboard from './src/screens/Leaderboard';
+import { pushProfile } from './src/lib/leaderboard';
 
 const COLORS = {
   bg: '#0e1116',
@@ -77,7 +79,7 @@ export default function App() {
         : null,
     [],
   );
-  const [mode, setMode] = useState<'solo' | 'duel'>(initialRoom ? 'duel' : 'solo');
+  const [mode, setMode] = useState<'solo' | 'duel' | 'leaderboard'>(initialRoom ? 'duel' : 'solo');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [duelRanked, setDuelRanked] = useState(false);
   const prevScore = useRef(0);
@@ -92,7 +94,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    loadProfile().then(setProfile).catch(() => {});
+    loadProfile()
+      .then((p) => {
+        setProfile(p);
+        pushProfile(p);
+      })
+      .catch(() => {});
     AsyncStorage.getItem(BEST_KEY)
       .then((v) => {
         const n = v ? parseInt(v, 10) : 0;
@@ -216,11 +223,20 @@ export default function App() {
           losses: p.losses + (r.result === 'loss' ? 1 : 0),
         };
         saveProfile(np);
+        pushProfile(np);
         return np;
       });
     },
     [],
   );
+
+  if (mode === 'leaderboard') {
+    return (
+      <GestureHandlerRootView style={styles.root}>
+        <Leaderboard myId={profile?.id ?? ''} onBack={() => setMode('solo')} />
+      </GestureHandlerRootView>
+    );
+  }
 
   if (mode === 'duel') {
     return (
@@ -288,6 +304,14 @@ export default function App() {
           <Text style={styles.rankedBtnText}>
             Ranked · {tierFor(profile?.rating ?? 1000).name} {profile?.rating ?? 1000}
           </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.shopBtn}
+          onPress={() => setMode('leaderboard')}
+          accessibilityLabel="leaderboard"
+        >
+          <Text style={styles.shopBtnText}>Leaderboard</Text>
         </Pressable>
 
         <GestureDetector gesture={swipe}>
