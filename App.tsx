@@ -3,6 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Platform,
   Pressable,
   ScrollView,
@@ -47,6 +48,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import { palette as COLORS, gradients, tierStyle, elevation, fonts, shade } from './src/theme/tokens';
+import { TouchScale, FadePop } from './src/ui/anim';
 
 const BEST_KEY = 'snake:best';
 const WALLET_KEY = 'snake:wallet';
@@ -66,6 +68,19 @@ export default function App() {
     Inter_500Medium,
     Inter_600SemiBold,
   });
+
+  const foodPulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(foodPulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(foodPulse, { toValue: 0, duration: 650, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [foodPulse]);
+  const foodScale = foodPulse.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.04] });
 
   const [state, setState] = useState<GameState>(() => createInitialState());
   const [best, setBest] = useState(0);
@@ -317,10 +332,10 @@ export default function App() {
                 {wallet.coins}
               </Text>
             </View>
-            <Pressable style={styles.ghostBtn} onPress={openShop} accessibilityLabel="shop">
+            <TouchScale style={styles.ghostBtn} onPress={openShop} accessibilityLabel="shop">
               <Text style={styles.ghostText}>Shop</Text>
-            </Pressable>
-            <Pressable
+            </TouchScale>
+            <TouchScale
               style={styles.ctaWrap}
               onPress={() => {
                 track(EVENTS.matchmakingStart, { mode: 'versus' });
@@ -332,10 +347,10 @@ export default function App() {
               <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cta}>
                 <Text style={styles.ctaText}>Versus</Text>
               </LinearGradient>
-            </Pressable>
+            </TouchScale>
           </View>
 
-          <Pressable
+          <TouchScale
             style={[styles.ctaWrap, styles.wide]}
             onPress={() => {
               track(EVENTS.matchmakingStart, { mode: 'ranked', rating: profile?.rating ?? 1000 });
@@ -349,9 +364,9 @@ export default function App() {
                 Ranked · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tier.name}</Text> {profile?.rating ?? 1000}
               </Text>
             </LinearGradient>
-          </Pressable>
+          </TouchScale>
 
-          <Pressable
+          <TouchScale
             style={[styles.ghostBtn, styles.wide, styles.ghostWide]}
             onPress={() => {
               track(EVENTS.leaderboardOpen);
@@ -360,7 +375,7 @@ export default function App() {
             accessibilityLabel="leaderboard"
           >
             <Text style={styles.ghostText}>Leaderboard</Text>
-          </Pressable>
+          </TouchScale>
 
           <GestureDetector gesture={swipe}>
             <View style={[styles.board, { width: boardPx, height: boardPx }]}>
@@ -401,28 +416,30 @@ export default function App() {
               <View
                 style={{ position: 'absolute', left: state.food.x * cell, top: state.food.y * cell, width: cell, height: cell, padding: 2 }}
               >
-                <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: COLORS.food, shadowColor: COLORS.food, shadowOpacity: 0.95, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 6 }} />
+                <Animated.View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: COLORS.food, shadowColor: COLORS.food, shadowOpacity: 0.95, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 6, transform: [{ scale: foodScale }] }} />
               </View>
 
-            {state.status !== 'playing' && (
-              <View style={styles.overlay}>
-                <Text style={styles.overlayTitle}>
-                  {state.status === 'over' ? 'Game over' : 'Ready?'}
-                </Text>
-                {state.status === 'over' && (
-                  <Text style={styles.overlaySub}>Score: {state.score}</Text>
-                )}
-                <Pressable
-                  style={[styles.startBtn, { backgroundColor: skin.body }]}
-                  onPress={handleStart}
-                  accessibilityLabel="start"
-                >
-                  <Text style={styles.startBtnText}>
-                    {state.status === 'over' ? 'Again' : 'Start'}
-                  </Text>
-                </Pressable>
-              </View>
-            )}
+              {state.status !== 'playing' && (
+                <View style={styles.overlay}>
+                  <FadePop style={styles.overlayInner}>
+                    <Text style={styles.overlayTitle}>
+                      {state.status === 'over' ? 'Game over' : 'Ready?'}
+                    </Text>
+                    {state.status === 'over' && (
+                      <Text style={styles.overlaySub}>Score: {state.score}</Text>
+                    )}
+                    <TouchScale
+                      style={[styles.startBtn, { backgroundColor: skin.body }]}
+                      onPress={handleStart}
+                      accessibilityLabel="start"
+                    >
+                      <Text style={styles.startBtnText}>
+                        {state.status === 'over' ? 'Again' : 'Start'}
+                      </Text>
+                    </TouchScale>
+                  </FadePop>
+                </View>
+              )}
           </View>
         </GestureDetector>
 
@@ -461,13 +478,9 @@ function DirButton({
   onPress: (d: Direction) => void;
 }) {
   return (
-    <Pressable
-      style={({ pressed }) => [styles.dirBtn, pressed && styles.dirBtnPressed]}
-      onPress={() => onPress(dir)}
-      accessibilityLabel={`dir-${dir}`}
-    >
+    <TouchScale style={styles.dirBtn} onPress={() => onPress(dir)} accessibilityLabel={`dir-${dir}`}>
       <Text style={styles.dirBtnText}>{label}</Text>
-    </Pressable>
+    </TouchScale>
   );
 }
 
@@ -513,15 +526,15 @@ function ShopOverlay({
                     <Text style={styles.skinBtnActiveText}>Selected</Text>
                   </View>
                 ) : owned ? (
-                  <Pressable
+                  <TouchScale
                     style={styles.skinBtn}
                     onPress={() => onSelect(s.id)}
                     accessibilityLabel={`select-${s.id}`}
                   >
                     <Text style={styles.skinBtnText}>Select</Text>
-                  </Pressable>
+                  </TouchScale>
                 ) : (
-                  <Pressable
+                  <TouchScale
                     style={[styles.skinBtn, !affordable && styles.skinBtnDisabled]}
                     onPress={() => affordable && onBuy(s)}
                     accessibilityLabel={`buy-${s.id}`}
@@ -529,16 +542,16 @@ function ShopOverlay({
                     <Text style={[styles.skinBtnText, !affordable && styles.skinBtnDisabledText]}>
                       Buy
                     </Text>
-                  </Pressable>
+                  </TouchScale>
                 )}
               </View>
             );
           })}
         </ScrollView>
 
-        <Pressable style={styles.closeBtn} onPress={onClose} accessibilityLabel="shop-close">
+        <TouchScale style={styles.closeBtn} onPress={onClose} accessibilityLabel="shop-close">
           <Text style={styles.closeBtnText}>Close</Text>
-        </Pressable>
+        </TouchScale>
       </View>
     </View>
   );
@@ -626,6 +639,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 14,
   },
+  overlayInner: { alignItems: 'center', gap: 14 },
   overlayTitle: { fontFamily: fonts.display, color: COLORS.text, fontSize: 26, letterSpacing: 1 },
   overlaySub: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 16 },
   startBtn: { paddingVertical: 12, paddingHorizontal: 34, borderRadius: 999 },

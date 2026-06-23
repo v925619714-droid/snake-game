@@ -15,6 +15,8 @@ import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
 import { fonts, shade } from '../theme/tokens';
+import { TouchScale, FadePop } from '../ui/anim';
+import * as Haptics from 'expo-haptics';
 
 const C = {
   bg: '#0B0F17',
@@ -144,9 +146,14 @@ export default function DuelGame({
       track(EVENTS.matchStart, { mode, role: role ?? 'guest', vs_bot: vsBot });
     }
 
+    const native = Platform.OS !== 'web';
+
     if (prev && prev.status === 'playing' && cur.status === 'playing') {
       const d = cur.roundScore[me] - prev.roundScore[me];
-      if (d > 0) track(EVENTS.foodEaten, { mode, color: myColor, correct: true, count: d });
+      if (d > 0) {
+        track(EVENTS.foodEaten, { mode, color: myColor, correct: true, count: d });
+        if (native) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }
     }
 
     if (prev && prev.status === 'playing' && cur.status !== 'playing') {
@@ -166,6 +173,15 @@ export default function DuelGame({
           opp_wins: cur.matchWins[oppI],
           rounds: cur.round,
         });
+        if (native) {
+          if (result === 'win') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          else if (result === 'loss') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+          else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        }
+      } else if (native) {
+        Haptics.impactAsync(
+          outcome === 'win' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light,
+        ).catch(() => {});
       }
     }
   }, [duel, role, vsBot]);
@@ -234,22 +250,22 @@ export default function DuelGame({
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
               {conn === 'ready' ? 'Opponent found! Starting…' : 'Finding a ranked opponent…'}
             </Text>
-            <Pressable style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
+            <TouchScale style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
               <Text style={styles.altBtnText}>Cancel</Text>
-            </Pressable>
+            </TouchScale>
           </View>
         )}
 
         {!ranked && conn === 'idle' && (
           <View style={styles.lobby}>
-            <Pressable style={styles.bigBtn} onPress={onQuick} accessibilityLabel="quick-match">
+            <TouchScale style={styles.bigBtn} onPress={onQuick} accessibilityLabel="quick-match">
               <Text style={styles.bigBtnText}>Quick match</Text>
-            </Pressable>
+            </TouchScale>
             <Text style={styles.subtle}>random opponent</Text>
             <View style={styles.divider} />
-            <Pressable style={styles.altBtn} onPress={onCreate} accessibilityLabel="create-room">
+            <TouchScale style={styles.altBtn} onPress={onCreate} accessibilityLabel="create-room">
               <Text style={styles.altBtnText}>Play with a friend</Text>
-            </Pressable>
+            </TouchScale>
             <View style={styles.joinRow}>
               <TextInput
                 style={styles.input}
@@ -261,13 +277,13 @@ export default function DuelGame({
                 maxLength={4}
                 accessibilityLabel="join-code"
               />
-              <Pressable
+              <TouchScale
                 style={styles.joinBtn}
                 onPress={onJoinCode}
                 accessibilityLabel="join-room"
               >
                 <Text style={styles.altBtnText}>Join</Text>
-              </Pressable>
+              </TouchScale>
             </View>
             <Rules />
           </View>
@@ -276,9 +292,9 @@ export default function DuelGame({
         {!ranked && conn === 'searching' && (
           <View style={styles.lobby}>
             <Text style={styles.status} accessibilityLabel="conn-searching">Searching for an opponent…</Text>
-            <Pressable style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
+            <TouchScale style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
               <Text style={styles.altBtnText}>Cancel</Text>
-            </Pressable>
+            </TouchScale>
           </View>
         )}
 
@@ -289,9 +305,9 @@ export default function DuelGame({
                 <Text style={styles.codeLabel}>Room code</Text>
                 <Text style={styles.codeValue} accessibilityLabel={`room-code-${code}`}>{code}</Text>
                 {!!inviteUrl(code) && (
-                  <Pressable style={styles.copyBtn} onPress={copyInvite} accessibilityLabel="copy-invite">
+                  <TouchScale style={styles.copyBtn} onPress={copyInvite} accessibilityLabel="copy-invite">
                     <Text style={styles.copyBtnText}>{copied ? 'Link copied!' : 'Copy invite link'}</Text>
-                  </Pressable>
+                  </TouchScale>
                 )}
                 <Text style={styles.codeHint}>Send the code or link to a friend</Text>
               </View>
@@ -303,9 +319,9 @@ export default function DuelGame({
               {conn === 'ready' && role === 'guest' && 'Waiting for host to start…'}
             </Text>
             {conn === 'ready' && role === 'host' && (
-              <Pressable style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-start">
+              <TouchScale style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-start">
                 <Text style={styles.bigBtnText}>Start</Text>
-              </Pressable>
+              </TouchScale>
             )}
             <Rules />
           </View>
@@ -313,9 +329,9 @@ export default function DuelGame({
 
         {conn === 'error' && <Text style={styles.status}>Connection error</Text>}
 
-        <Pressable style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
+        <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
           <Text style={styles.backText}>Back</Text>
-        </Pressable>
+        </TouchScale>
       </View>
     );
   }
@@ -402,35 +418,39 @@ export default function DuelGame({
 
           {duel.status === 'roundOver' && (
             <View style={styles.overlay}>
-              <Text style={styles.overlayTitle}>
-                {duel.roundWinner === -1 ? 'Draw!' : duel.roundWinner === you ? 'Round won!' : 'Round lost'}
-              </Text>
-              <Text style={styles.overlaySub}>Next round…</Text>
+              <FadePop style={styles.overlayInner}>
+                <Text style={styles.overlayTitle}>
+                  {duel.roundWinner === -1 ? 'Draw!' : duel.roundWinner === you ? 'Round won!' : 'Round lost'}
+                </Text>
+                <Text style={styles.overlaySub}>Next round…</Text>
+              </FadePop>
             </View>
           )}
 
           {duel.status === 'matchOver' && (
             <View style={styles.overlay}>
-              <Text style={styles.overlayTitle}>
-                {duel.matchWinner === you ? 'You win! 🏆' : duel.matchWinner === -1 ? "It's a draw" : 'You lose'}
-              </Text>
-              <Text style={styles.overlaySub}>{duel.matchWins[you]} : {duel.matchWins[opp]}</Text>
-              {ranked && ratingChange && (
-                <Text style={[styles.ratingDelta, { color: ratingChange.delta >= 0 ? C.accent : '#ff6b6b' }]}>
-                  {ratingChange.delta >= 0 ? '+' : ''}{ratingChange.delta} → {ratingChange.newRating}
+              <FadePop style={styles.overlayInner}>
+                <Text style={styles.overlayTitle}>
+                  {duel.matchWinner === you ? 'You win!' : duel.matchWinner === -1 ? "It's a draw" : 'You lose'}
                 </Text>
-              )}
-              {ranked ? (
-                <Pressable style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-back">
-                  <Text style={styles.bigBtnText}>Done</Text>
-                </Pressable>
-              ) : role === 'host' ? (
-                <Pressable style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-restart">
-                  <Text style={styles.bigBtnText}>Play again</Text>
-                </Pressable>
-              ) : (
-                <Text style={styles.overlaySub}>Waiting for host…</Text>
-              )}
+                <Text style={styles.overlaySub}>{duel.matchWins[you]} : {duel.matchWins[opp]}</Text>
+                {ranked && ratingChange && (
+                  <Text style={[styles.ratingDelta, { color: ratingChange.delta >= 0 ? C.accent : '#ff6b6b' }]}>
+                    {ratingChange.delta >= 0 ? '+' : ''}{ratingChange.delta} → {ratingChange.newRating}
+                  </Text>
+                )}
+                {ranked ? (
+                  <TouchScale style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-back">
+                    <Text style={styles.bigBtnText}>Done</Text>
+                  </TouchScale>
+                ) : role === 'host' ? (
+                  <TouchScale style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-restart">
+                    <Text style={styles.bigBtnText}>Play again</Text>
+                  </TouchScale>
+                ) : (
+                  <Text style={styles.overlaySub}>Waiting for host…</Text>
+                )}
+              </FadePop>
             </View>
           )}
         </View>
@@ -445,9 +465,9 @@ export default function DuelGame({
         </View>
       </View>
 
-      <Pressable style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
+      <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
         <Text style={styles.backText}>Leave</Text>
-      </Pressable>
+      </TouchScale>
     </View>
   );
 }
@@ -492,9 +512,9 @@ function ScoreChip({
 
 function DirButton({ label, dir, onPress }: { label: string; dir: Direction; onPress: (d: Direction) => void }) {
   return (
-    <Pressable style={styles.dirBtn} onPress={() => onPress(dir)} accessibilityLabel={`dir-${dir}`}>
+    <TouchScale style={styles.dirBtn} onPress={() => onPress(dir)} accessibilityLabel={`dir-${dir}`}>
       <Text style={styles.dirBtnText}>{label}</Text>
-    </Pressable>
+    </TouchScale>
   );
 }
 
@@ -544,8 +564,9 @@ const styles = StyleSheet.create({
   eye: { position: 'absolute', backgroundColor: '#06121e' },
   overlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(14,17,22,0.85)', alignItems: 'center', justifyContent: 'center', gap: 12,
+    backgroundColor: 'rgba(7,10,16,0.86)', alignItems: 'center', justifyContent: 'center',
   },
+  overlayInner: { alignItems: 'center', justifyContent: 'center', gap: 12 },
   overlayTitle: { fontFamily: fonts.display, color: C.text, fontSize: 26 },
   overlaySub: { fontFamily: fonts.body, color: C.textDim, fontSize: 16 },
   ratingDelta: { fontFamily: fonts.num, fontSize: 20 },

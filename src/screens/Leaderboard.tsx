@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { tierFor } from '../game/rating';
 import { type LeaderRow, fetchLeaderboard } from '../lib/leaderboard';
 import { fonts } from '../theme/tokens';
+import { TouchScale } from '../ui/anim';
 
 const C = {
   bg: '#0B0F17',
@@ -57,12 +58,12 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
         </ScrollView>
       )}
 
-      <Pressable style={styles.btn} onPress={load} accessibilityLabel="lb-refresh">
+      <TouchScale style={styles.btn} onPress={load} accessibilityLabel="lb-refresh">
         <Text style={styles.btnText}>Refresh</Text>
-      </Pressable>
-      <Pressable style={styles.back} onPress={onBack} accessibilityLabel="lb-back">
+      </TouchScale>
+      <TouchScale style={styles.back} onPress={onBack} accessibilityLabel="lb-back">
         <Text style={styles.backText}>Back</Text>
-      </Pressable>
+      </TouchScale>
     </View>
   );
 }
