@@ -1,6 +1,6 @@
 import { type RealtimeChannel } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type CoopState, coopInitial, coopStep, coopTurn } from '../game/coop';
+import { type DuelState, duelNewMatch, duelNextRound, duelStep, duelTurn } from '../game/duel';
 import { type Direction } from '../game/logic';
 import { supabase } from '../lib/supabase';
 
@@ -8,6 +8,7 @@ export type Role = 'host' | 'guest';
 export type Conn = 'idle' | 'connecting' | 'waiting' | 'ready' | 'error';
 
 const TICK_MS = 150;
+const ROUND_BREAK_MS = 2600;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 export function randomCode(): string {
@@ -20,17 +21,18 @@ export function useRoom() {
   const [conn, setConn] = useState<Conn>('idle');
   const [role, setRole] = useState<Role | null>(null);
   const [code, setCode] = useState('');
-  const [coop, setCoop] = useState<CoopState | null>(null);
+  const [duel, setDuel] = useState<DuelState | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const coopRef = useRef<CoopState | null>(null);
+  const duelRef = useRef<DuelState | null>(null);
   const roleRef = useRef<Role | null>(null);
   const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const breakRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const peerRef = useRef(false);
 
-  const applyCoop = useCallback((s: CoopState | null) => {
-    coopRef.current = s;
-    setCoop(s);
+  const apply = useCallback((s: DuelState | null) => {
+    duelRef.current = s;
+    setDuel(s);
   }, []);
 
   const broadcast = useCallback((event: string, payload: Record<string, unknown>) => {
@@ -47,22 +49,33 @@ export function useRoom() {
   const startLoop = useCallback(() => {
     stopLoop();
     loopRef.current = setInterval(() => {
-      const cur = coopRef.current;
+      const cur = duelRef.current;
       if (!cur || cur.status !== 'playing') return;
-      const next = coopStep(cur);
-      applyCoop(next);
+      const next = duelStep(cur);
+      apply(next);
       broadcast('state', { state: next });
+      if (next.status === 'roundOver') {
+        stopLoop();
+        breakRef.current = setTimeout(() => {
+          const nr = duelNextRound(duelRef.current!);
+          apply(nr);
+          broadcast('state', { state: nr });
+          startLoop();
+        }, ROUND_BREAK_MS);
+      } else if (next.status === 'matchOver') {
+        stopLoop();
+      }
     }, TICK_MS);
-  }, [applyCoop, broadcast, stopLoop]);
+  }, [apply, broadcast, stopLoop]);
 
-  // Хост стартует/перезапускает партию.
   const startGame = useCallback(() => {
     if (roleRef.current !== 'host') return;
-    const init = coopInitial();
-    applyCoop(init);
+    if (breakRef.current) clearTimeout(breakRef.current);
+    const init = duelNewMatch();
+    apply(init);
     broadcast('state', { state: init });
     startLoop();
-  }, [applyCoop, broadcast, startLoop]);
+  }, [apply, broadcast, startLoop]);
 
   const connect = useCallback(
     (asRole: Role, roomCode: string) => {
@@ -77,12 +90,12 @@ export function useRoom() {
       channelRef.current = ch;
 
       ch.on('broadcast', { event: 'state' }, ({ payload }) => {
-        if (roleRef.current === 'guest') applyCoop(payload.state as CoopState);
+        if (roleRef.current === 'guest') apply(payload.state as DuelState);
       });
       ch.on('broadcast', { event: 'input' }, ({ payload }) => {
         if (roleRef.current === 'host') {
-          const cur = coopRef.current;
-          if (cur) applyCoop(coopTurn(cur, 1, payload.dir as Direction));
+          const cur = duelRef.current;
+          if (cur) apply(duelTurn(cur, 1, payload.dir as Direction));
         }
       });
       ch.on('presence', { event: 'sync' }, () => {
@@ -101,7 +114,7 @@ export function useRoom() {
         }
       });
     },
-    [applyCoop],
+    [apply],
   );
 
   const createRoom = useCallback(() => {
@@ -121,36 +134,38 @@ export function useRoom() {
   const turn = useCallback(
     (dir: Direction) => {
       if (roleRef.current === 'host') {
-        const cur = coopRef.current;
-        if (cur) applyCoop(coopTurn(cur, 0, dir));
+        const cur = duelRef.current;
+        if (cur) apply(duelTurn(cur, 0, dir));
       } else {
         broadcast('input', { dir });
       }
     },
-    [applyCoop, broadcast],
+    [apply, broadcast],
   );
 
   const leave = useCallback(() => {
     stopLoop();
+    if (breakRef.current) clearTimeout(breakRef.current);
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
     roleRef.current = null;
     peerRef.current = false;
-    applyCoop(null);
+    apply(null);
     setConn('idle');
     setRole(null);
     setCode('');
-  }, [applyCoop, stopLoop]);
+  }, [apply, stopLoop]);
 
   useEffect(
     () => () => {
       stopLoop();
+      if (breakRef.current) clearTimeout(breakRef.current);
       if (channelRef.current) supabase.removeChannel(channelRef.current);
     },
     [stopLoop],
   );
 
-  return { conn, role, code, coop, createRoom, joinRoom, startGame, turn, leave };
+  return { conn, role, code, duel, createRoom, joinRoom, startGame, turn, leave };
 }

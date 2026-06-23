@@ -37,7 +37,7 @@ import {
   selectSkin,
 } from './src/game/economy';
 import { SKINS, type Skin, getSkin } from './src/game/skins';
-import CoopGame from './src/screens/CoopGame';
+import DuelGame from './src/screens/DuelGame';
 
 const COLORS = {
   bg: '#0e1116',
@@ -68,7 +68,7 @@ export default function App() {
   const [best, setBest] = useState(0);
   const [wallet, setWallet] = useState<Wallet>(initialWallet);
   const [showShop, setShowShop] = useState(false);
-  const [mode, setMode] = useState<'solo' | 'coop'>('solo');
+  const [mode, setMode] = useState<'solo' | 'duel'>('solo');
   const prevScore = useRef(0);
   const walletLoaded = useRef(false);
   const walletRef = useRef(wallet);
@@ -80,7 +80,6 @@ export default function App() {
     AsyncStorage.setItem(WALLET_KEY, JSON.stringify(w)).catch(() => {});
   }, []);
 
-  // Загрузка рекорда и кошелька.
   useEffect(() => {
     AsyncStorage.getItem(BEST_KEY)
       .then((v) => {
@@ -102,14 +101,12 @@ export default function App() {
       });
   }, []);
 
-  // Игровой цикл.
   useEffect(() => {
     if (state.status !== 'playing') return;
     const id = setInterval(() => setState((s) => step(s)), speedFor(state.score));
     return () => clearInterval(id);
   }, [state.status, state.score]);
 
-  // Начисление монет за съеденную еду (+ вибро на устройстве).
   useEffect(() => {
     const delta = state.score - prevScore.current;
     if (delta > 0) {
@@ -121,7 +118,6 @@ export default function App() {
     prevScore.current = state.score;
   }, [state.score]);
 
-  // Game over: рекорд + сохранение кошелька + вибро.
   useEffect(() => {
     if (state.status !== 'over') return;
     setBest((b) => {
@@ -143,7 +139,6 @@ export default function App() {
     setState((s) => (s.status === 'over' ? startGame(createInitialState()) : startGame(s)));
   }, []);
 
-  // Управление с клавиатуры (web и десктоп).
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const map: Record<string, Direction> = {
@@ -151,7 +146,6 @@ export default function App() {
       w: 'up', s: 'down', a: 'left', d: 'right',
     };
     const onKey = (e: KeyboardEvent) => {
-      if (showShop) return;
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
         handleStart();
@@ -165,7 +159,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handleTurn, handleStart, showShop]);
+  }, [handleTurn, handleStart]);
 
   const swipe = useMemo(
     () =>
@@ -199,10 +193,10 @@ export default function App() {
     [saveWallet],
   );
 
-  if (mode === 'coop') {
+  if (mode === 'duel') {
     return (
       <GestureHandlerRootView style={styles.root}>
-        <CoopGame onExit={() => setMode('solo')} />
+        <DuelGame onExit={() => setMode('solo')} />
       </GestureHandlerRootView>
     );
   }
@@ -211,17 +205,17 @@ export default function App() {
     <GestureHandlerRootView style={styles.root}>
       <View style={styles.container}>
         <StatusBar style="light" />
-        <Text style={styles.title}>Змейка</Text>
+        <Text style={styles.title}>Chroma Coil</Text>
 
         <View style={styles.scoreRow}>
           <View style={styles.scoreBox}>
-            <Text style={styles.scoreLabel}>Счёт</Text>
+            <Text style={styles.scoreLabel}>Score</Text>
             <Text style={styles.scoreValue} accessibilityLabel={`score-${state.score}`}>
               {state.score}
             </Text>
           </View>
           <View style={styles.scoreBox}>
-            <Text style={styles.scoreLabel}>Рекорд</Text>
+            <Text style={styles.scoreLabel}>Best</Text>
             <Text style={styles.scoreValue}>{best}</Text>
           </View>
         </View>
@@ -234,14 +228,14 @@ export default function App() {
             </Text>
           </View>
           <Pressable style={styles.shopBtn} onPress={openShop} accessibilityLabel="shop">
-            <Text style={styles.shopBtnText}>Магазин</Text>
+            <Text style={styles.shopBtnText}>Shop</Text>
           </Pressable>
           <Pressable
             style={styles.shopBtn}
-            onPress={() => setMode('coop')}
-            accessibilityLabel="coop-enter"
+            onPress={() => setMode('duel')}
+            accessibilityLabel="versus"
           >
-            <Text style={styles.shopBtnText}>Вдвоём</Text>
+            <Text style={styles.shopBtnText}>Versus</Text>
           </Pressable>
         </View>
 
@@ -285,10 +279,10 @@ export default function App() {
             {state.status !== 'playing' && (
               <View style={styles.overlay}>
                 <Text style={styles.overlayTitle}>
-                  {state.status === 'over' ? 'Игра окончена' : 'Готов?'}
+                  {state.status === 'over' ? 'Game over' : 'Ready?'}
                 </Text>
                 {state.status === 'over' && (
-                  <Text style={styles.overlaySub}>Счёт: {state.score}</Text>
+                  <Text style={styles.overlaySub}>Score: {state.score}</Text>
                 )}
                 <Pressable
                   style={[styles.startBtn, { backgroundColor: skin.body }]}
@@ -296,7 +290,7 @@ export default function App() {
                   accessibilityLabel="start"
                 >
                   <Text style={styles.startBtnText}>
-                    {state.status === 'over' ? 'Заново' : 'Старт'}
+                    {state.status === 'over' ? 'Again' : 'Start'}
                   </Text>
                 </Pressable>
               </View>
@@ -304,7 +298,7 @@ export default function App() {
           </View>
         </GestureDetector>
 
-        <Text style={styles.hint}>Свайп или стрелки · пробел — старт</Text>
+        <Text style={styles.hint}>Swipe or arrows · space to start</Text>
 
         <View style={styles.dpad}>
           <DirButton label="▲" dir="up" onPress={handleTurn} />
@@ -363,7 +357,7 @@ function ShopOverlay({
     <View style={styles.shopOverlay}>
       <View style={styles.shopCard}>
         <View style={styles.shopHeader}>
-          <Text style={styles.shopTitle}>Магазин скинов</Text>
+          <Text style={styles.shopTitle}>Skins</Text>
           <View style={styles.coinPill}>
             <View style={styles.coinDot} />
             <Text style={styles.coinText}>{wallet.coins}</Text>
@@ -383,11 +377,11 @@ function ShopOverlay({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.skinName}>{s.name}</Text>
-                  <Text style={styles.skinPrice}>{s.price === 0 ? 'Бесплатно' : `${s.price} монет`}</Text>
+                  <Text style={styles.skinPrice}>{s.price === 0 ? 'Free' : `${s.price} coins`}</Text>
                 </View>
                 {selected ? (
                   <View style={[styles.skinBtn, styles.skinBtnActive]}>
-                    <Text style={styles.skinBtnActiveText}>Выбран</Text>
+                    <Text style={styles.skinBtnActiveText}>Selected</Text>
                   </View>
                 ) : owned ? (
                   <Pressable
@@ -395,7 +389,7 @@ function ShopOverlay({
                     onPress={() => onSelect(s.id)}
                     accessibilityLabel={`select-${s.id}`}
                   >
-                    <Text style={styles.skinBtnText}>Выбрать</Text>
+                    <Text style={styles.skinBtnText}>Select</Text>
                   </Pressable>
                 ) : (
                   <Pressable
@@ -404,7 +398,7 @@ function ShopOverlay({
                     accessibilityLabel={`buy-${s.id}`}
                   >
                     <Text style={[styles.skinBtnText, !affordable && styles.skinBtnDisabledText]}>
-                      Купить
+                      Buy
                     </Text>
                   </Pressable>
                 )}
@@ -414,7 +408,7 @@ function ShopOverlay({
         </ScrollView>
 
         <Pressable style={styles.closeBtn} onPress={onClose} accessibilityLabel="shop-close">
-          <Text style={styles.closeBtnText}>Закрыть</Text>
+          <Text style={styles.closeBtnText}>Close</Text>
         </Pressable>
       </View>
     </View>
