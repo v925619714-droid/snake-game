@@ -7,7 +7,8 @@ import { DUEL_BOARD, type DuelState } from './duel';
 import { type Direction, type Point, isOpposite, nextPoint, pointsEqual } from './logic';
 
 // Доля случайных (не оптимальных) ходов. Крутилка баланса: больше → бот слабее.
-export const BOT_MISTAKE_RATE = 0.12;
+// 0 = максимальная сложность: бот никогда не ошибается, всегда идёт оптимально.
+export const BOT_MISTAKE_RATE = 0;
 
 const ALL_DIRS: Direction[] = ['up', 'down', 'left', 'right'];
 
