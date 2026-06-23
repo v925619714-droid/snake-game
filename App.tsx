@@ -68,7 +68,14 @@ export default function App() {
   const [best, setBest] = useState(0);
   const [wallet, setWallet] = useState<Wallet>(initialWallet);
   const [showShop, setShowShop] = useState(false);
-  const [mode, setMode] = useState<'solo' | 'duel'>('solo');
+  const initialRoom = useMemo(
+    () =>
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('room')
+        : null,
+    [],
+  );
+  const [mode, setMode] = useState<'solo' | 'duel'>(initialRoom ? 'duel' : 'solo');
   const prevScore = useRef(0);
   const walletLoaded = useRef(false);
   const walletRef = useRef(wallet);
@@ -196,7 +203,7 @@ export default function App() {
   if (mode === 'duel') {
     return (
       <GestureHandlerRootView style={styles.root}>
-        <DuelGame onExit={() => setMode('solo')} />
+        <DuelGame onExit={() => setMode('solo')} autoJoin={initialRoom} />
       </GestureHandlerRootView>
     );
   }

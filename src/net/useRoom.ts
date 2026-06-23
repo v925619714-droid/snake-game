@@ -5,7 +5,7 @@ import { type Direction } from '../game/logic';
 import { supabase } from '../lib/supabase';
 
 export type Role = 'host' | 'guest';
-export type Conn = 'idle' | 'connecting' | 'waiting' | 'ready' | 'error';
+export type Conn = 'idle' | 'searching' | 'connecting' | 'waiting' | 'ready' | 'error';
 
 const TICK_MS = 150;
 const ROUND_BREAK_MS = 2600;
@@ -15,6 +15,10 @@ export function randomCode(): string {
   let s = '';
   for (let i = 0; i < 4; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
   return s;
+}
+
+function randomId(): string {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
 
 export function useRoom() {
@@ -29,6 +33,8 @@ export function useRoom() {
   const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const breakRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const peerRef = useRef(false);
+  const mmRef = useRef<RealtimeChannel | null>(null);
+  const matchedRef = useRef(false);
 
   const apply = useCallback((s: DuelState | null) => {
     duelRef.current = s;
@@ -130,7 +136,47 @@ export function useRoom() {
     [connect],
   );
 
-  // Поворот: хост — игрок 0 (локально), гость — игрок 1 (через сеть).
+  const cleanupMM = useCallback(() => {
+    if (mmRef.current) {
+      supabase.removeChannel(mmRef.current);
+      mmRef.current = null;
+    }
+  }, []);
+
+  // Быстрый матч со случайным игроком (без рейтинга).
+  // Очередь — общий presence-канал; детерминированный паринг: меньший id = хост.
+  const quickMatch = useCallback(() => {
+    matchedRef.current = false;
+    const myId = randomId();
+    setConn('searching');
+    setRole(null);
+    const mm = supabase.channel('matchmaking', { config: { presence: { key: myId } } });
+    mmRef.current = mm;
+
+    mm.on('broadcast', { event: 'match' }, ({ payload }) => {
+      if (matchedRef.current) return;
+      if (payload.guest === myId) {
+        matchedRef.current = true;
+        cleanupMM();
+        connect('guest', payload.room as string);
+      }
+    });
+    mm.on('presence', { event: 'sync' }, () => {
+      if (matchedRef.current) return;
+      const ids = Object.keys(mm.presenceState()).sort();
+      if (ids.length >= 2 && ids[0] === myId) {
+        matchedRef.current = true;
+        const room = randomCode();
+        mm.send({ type: 'broadcast', event: 'match', payload: { host: ids[0], guest: ids[1], room } });
+        cleanupMM();
+        connect('host', room);
+      }
+    });
+    mm.subscribe((s) => {
+      if (s === 'SUBSCRIBED') mm.track({ id: myId, t: Date.now() });
+    });
+  }, [cleanupMM, connect]);
+
   const turn = useCallback(
     (dir: Direction) => {
       if (roleRef.current === 'host') {
@@ -146,6 +192,8 @@ export function useRoom() {
   const leave = useCallback(() => {
     stopLoop();
     if (breakRef.current) clearTimeout(breakRef.current);
+    cleanupMM();
+    matchedRef.current = false;
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -156,16 +204,17 @@ export function useRoom() {
     setConn('idle');
     setRole(null);
     setCode('');
-  }, [apply, stopLoop]);
+  }, [apply, cleanupMM, stopLoop]);
 
   useEffect(
     () => () => {
       stopLoop();
       if (breakRef.current) clearTimeout(breakRef.current);
       if (channelRef.current) supabase.removeChannel(channelRef.current);
+      if (mmRef.current) supabase.removeChannel(mmRef.current);
     },
     [stopLoop],
   );
 
-  return { conn, role, code, duel, createRoom, joinRoom, startGame, turn, leave };
+  return { conn, role, code, duel, createRoom, joinRoom, quickMatch, startGame, turn, leave };
 }

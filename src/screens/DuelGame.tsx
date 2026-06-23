@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -28,18 +28,47 @@ const P = [
   { body: '#5cc8ff', head: '#b3e8ff', food: '#5cc8ff', name: 'Blue' },
 ];
 
-export default function DuelGame({ onExit }: { onExit: () => void }) {
+function inviteUrl(code: string): string {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !code) return '';
+  return `${window.location.origin}${window.location.pathname}?room=${code}`;
+}
+
+export default function DuelGame({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string | null }) {
   const { width, height } = useWindowDimensions();
   const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - 320, 420)));
   const cell = boardPx / DUEL_BOARD;
 
-  const { conn, role, code, duel, createRoom, joinRoom, startGame, turn, leave } = useRoom();
+  const { conn, role, code, duel, createRoom, joinRoom, quickMatch, startGame, turn, leave } = useRoom();
   const [joinCode, setJoinCode] = useState('');
+  const [copied, setCopied] = useState(false);
+  const autoJoined = useRef(false);
+
+  // Авто-join по ссылке-приглашению (?room=CODE).
+  useEffect(() => {
+    if (autoJoined.current) return;
+    if (autoJoin && conn === 'idle') {
+      autoJoined.current = true;
+      joinRoom(autoJoin);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, [autoJoin, conn, joinRoom]);
 
   const handleExit = useCallback(() => {
     leave();
     onExit();
   }, [leave, onExit]);
+
+  const copyInvite = useCallback(() => {
+    const url = inviteUrl(code);
+    if (url && typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }).catch(() => {});
+    }
+  }, [code]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -81,10 +110,16 @@ export default function DuelGame({ onExit }: { onExit: () => void }) {
 
         {conn === 'idle' && (
           <View style={styles.lobby}>
-            <Pressable style={styles.bigBtn} onPress={createRoom} accessibilityLabel="create-room">
-              <Text style={styles.bigBtnText}>Create room</Text>
+            <Pressable style={styles.bigBtn} onPress={quickMatch} accessibilityLabel="quick-match">
+              <Text style={styles.bigBtnText}>Quick match</Text>
             </Pressable>
-            <Text style={styles.or}>or join with a code</Text>
+            <Text style={styles.subtle}>random opponent</Text>
+
+            <View style={styles.divider} />
+
+            <Pressable style={styles.altBtn} onPress={createRoom} accessibilityLabel="create-room">
+              <Text style={styles.altBtnText}>Play with a friend</Text>
+            </Pressable>
             <View style={styles.joinRow}>
               <TextInput
                 style={styles.input}
@@ -101,9 +136,19 @@ export default function DuelGame({ onExit }: { onExit: () => void }) {
                 onPress={() => joinCode.length >= 3 && joinRoom(joinCode)}
                 accessibilityLabel="join-room"
               >
-                <Text style={styles.bigBtnText}>Join</Text>
+                <Text style={styles.altBtnText}>Join</Text>
               </Pressable>
             </View>
+            <Rules />
+          </View>
+        )}
+
+        {conn === 'searching' && (
+          <View style={styles.lobby}>
+            <Text style={styles.status} accessibilityLabel="conn-searching">Searching for an opponent…</Text>
+            <Pressable style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
+              <Text style={styles.altBtnText}>Cancel</Text>
+            </Pressable>
           </View>
         )}
 
@@ -112,10 +157,13 @@ export default function DuelGame({ onExit }: { onExit: () => void }) {
             {role === 'host' && (
               <View style={styles.codeBox}>
                 <Text style={styles.codeLabel}>Room code</Text>
-                <Text style={styles.codeValue} accessibilityLabel={`room-code-${code}`}>
-                  {code}
-                </Text>
-                <Text style={styles.codeHint}>Share it with the other player</Text>
+                <Text style={styles.codeValue} accessibilityLabel={`room-code-${code}`}>{code}</Text>
+                {!!inviteUrl(code) && (
+                  <Pressable style={styles.copyBtn} onPress={copyInvite} accessibilityLabel="copy-invite">
+                    <Text style={styles.copyBtnText}>{copied ? 'Link copied!' : 'Copy invite link'}</Text>
+                  </Pressable>
+                )}
+                <Text style={styles.codeHint}>Send the code or link to a friend</Text>
               </View>
             )}
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
@@ -183,11 +231,7 @@ export default function DuelGame({ onExit }: { onExit: () => void }) {
           {duel.status === 'roundOver' && (
             <View style={styles.overlay}>
               <Text style={styles.overlayTitle}>
-                {duel.roundWinner === -1
-                  ? 'Draw!'
-                  : duel.roundWinner === you
-                    ? 'Round won!'
-                    : 'Round lost'}
+                {duel.roundWinner === -1 ? 'Draw!' : duel.roundWinner === you ? 'Round won!' : 'Round lost'}
               </Text>
               <Text style={styles.overlaySub}>Next round…</Text>
             </View>
@@ -195,12 +239,8 @@ export default function DuelGame({ onExit }: { onExit: () => void }) {
 
           {duel.status === 'matchOver' && (
             <View style={styles.overlay}>
-              <Text style={styles.overlayTitle}>
-                {duel.matchWinner === you ? 'You win! 🏆' : 'You lose'}
-              </Text>
-              <Text style={styles.overlaySub}>
-                {duel.matchWins[you]} : {duel.matchWins[opp]}
-              </Text>
+              <Text style={styles.overlayTitle}>{duel.matchWinner === you ? 'You win! 🏆' : 'You lose'}</Text>
+              <Text style={styles.overlaySub}>{duel.matchWins[you]} : {duel.matchWins[opp]}</Text>
               {role === 'host' ? (
                 <Pressable style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-restart">
                   <Text style={styles.bigBtnText}>Play again</Text>
@@ -261,28 +301,28 @@ function DirButton({ label, dir, onPress }: { label: string; dir: Direction; onP
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: C.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: Platform.OS === 'web' ? 16 : 40,
-    paddingBottom: 16,
-    gap: 12,
+    flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center',
+    paddingTop: Platform.OS === 'web' ? 16 : 40, paddingBottom: 16, gap: 12,
   },
   title: { color: C.text, fontSize: 26, fontWeight: '700', letterSpacing: 1 },
-  lobby: { alignItems: 'center', gap: 16, width: '100%', maxWidth: 360 },
+  lobby: { alignItems: 'center', gap: 12, width: '100%', maxWidth: 360 },
   bigBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 36, alignItems: 'center' },
   bigBtnText: { color: '#08130b', fontSize: 17, fontWeight: '700' },
-  or: { color: C.textDim, fontSize: 14 },
+  altBtn: { backgroundColor: C.board, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 24, borderWidth: 1, borderColor: C.border, alignItems: 'center' },
+  altBtnText: { color: C.text, fontSize: 15, fontWeight: '500' },
+  subtle: { color: C.textDim, fontSize: 13 },
+  divider: { height: 1, backgroundColor: C.border, alignSelf: 'stretch', marginVertical: 4 },
   joinRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   input: {
     backgroundColor: C.board, borderRadius: 12, borderWidth: 1, borderColor: C.border, color: C.text,
     fontSize: 22, fontWeight: '700', letterSpacing: 4, textAlign: 'center', paddingVertical: 10, width: 130,
   },
-  joinBtn: { backgroundColor: C.accent, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20 },
-  codeBox: { alignItems: 'center', gap: 4, backgroundColor: C.board, borderRadius: 14, padding: 18 },
+  joinBtn: { backgroundColor: C.board, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20, borderWidth: 1, borderColor: C.border },
+  codeBox: { alignItems: 'center', gap: 8, backgroundColor: C.board, borderRadius: 14, padding: 18 },
   codeLabel: { color: C.textDim, fontSize: 13 },
   codeValue: { color: C.text, fontSize: 40, fontWeight: '700', letterSpacing: 8 },
+  copyBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 18 },
+  copyBtnText: { color: '#08130b', fontSize: 14, fontWeight: '700' },
   codeHint: { color: C.textDim, fontSize: 13 },
   status: { color: C.text, fontSize: 16 },
   rules: { gap: 4, alignItems: 'center', marginTop: 4 },
