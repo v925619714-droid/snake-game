@@ -40,9 +40,6 @@
       "eas": {
         "projectId": "33adfbd3-15e7-4e8d-93bd-00b20515c0a3"
       }
-    },
-    "experiments": {
-      "baseUrl": "/snake-game"
     }
   }
 }

@@ -37,6 +37,7 @@ import {
   selectSkin,
 } from './src/game/economy';
 import { SKINS, type Skin, getSkin } from './src/game/skins';
+import CoopGame from './src/screens/CoopGame';
 
 const COLORS = {
   bg: '#0e1116',
@@ -67,6 +68,7 @@ export default function App() {
   const [best, setBest] = useState(0);
   const [wallet, setWallet] = useState<Wallet>(initialWallet);
   const [showShop, setShowShop] = useState(false);
+  const [mode, setMode] = useState<'solo' | 'coop'>('solo');
   const prevScore = useRef(0);
   const walletLoaded = useRef(false);
   const walletRef = useRef(wallet);
@@ -197,6 +199,14 @@ export default function App() {
     [saveWallet],
   );
 
+  if (mode === 'coop') {
+    return (
+      <GestureHandlerRootView style={styles.root}>
+        <CoopGame onExit={() => setMode('solo')} />
+      </GestureHandlerRootView>
+    );
+  }
+
   return (
     <GestureHandlerRootView style={styles.root}>
       <View style={styles.container}>
@@ -225,6 +235,13 @@ export default function App() {
           </View>
           <Pressable style={styles.shopBtn} onPress={openShop} accessibilityLabel="shop">
             <Text style={styles.shopBtnText}>Магазин</Text>
+          </Pressable>
+          <Pressable
+            style={styles.shopBtn}
+            onPress={() => setMode('coop')}
+            accessibilityLabel="coop-enter"
+          >
+            <Text style={styles.shopBtnText}>Вдвоём</Text>
           </Pressable>
         </View>
 

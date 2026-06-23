@@ -34,6 +34,11 @@ export function pointsEqual(a: Point, b: Point): boolean {
   return a.x === b.x && a.y === b.y;
 }
 
+export function nextPoint(p: Point, dir: Direction): Point {
+  const d = DELTAS[dir];
+  return { x: p.x + d.x, y: p.y + d.y };
+}
+
 // Случайная свободная клетка для еды.
 export function spawnFood(snake: Point[], rng: () => number = Math.random): Point {
   const occupied = new Set(snake.map((p) => p.y * BOARD + p.x));
