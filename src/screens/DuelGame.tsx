@@ -15,6 +15,7 @@ import { type Direction, swipeToDirection } from '../game/logic';
 import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
+import { play as playSfx } from '../lib/sound';
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import * as Haptics from 'expo-haptics';
@@ -157,8 +158,11 @@ export default function DuelGame({
       const d = cur.roundScore[me] - prev.roundScore[me];
       if (d > 0) {
         track(EVENTS.foodEaten, { mode, color: myColor, correct: true, count: d });
+        playSfx('eat');
         if (native) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
+      // подобрал буст-еду (ускорение)
+      if ((prev.boosts?.[me] ?? 0) === 0 && (cur.boosts?.[me] ?? 0) > 0) playSfx('boost');
     }
 
     if (prev && prev.status === 'playing' && cur.status !== 'playing') {
@@ -178,15 +182,19 @@ export default function DuelGame({
           opp_wins: cur.matchWins[oppI],
           rounds: cur.round,
         });
+        playSfx(result === 'win' ? 'win' : result === 'loss' ? 'lose' : 'crash');
         if (native) {
           if (result === 'win') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           else if (result === 'loss') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
           else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
         }
-      } else if (native) {
-        Haptics.impactAsync(
-          outcome === 'win' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light,
-        ).catch(() => {});
+      } else {
+        if (cause) playSfx('crash'); // погиб в промежуточном раунде
+        if (native) {
+          Haptics.impactAsync(
+            outcome === 'win' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light,
+          ).catch(() => {});
+        }
       }
     }
   }, [duel, role, vsBot]);

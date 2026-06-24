@@ -49,6 +49,7 @@ import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
 import { fetchProfileById, pushProfile, pushWallet, submitMatch } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
+import { initSound, play as playSfx, isMuted, toggleMuted } from './src/lib/sound';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -101,6 +102,7 @@ function AppInner() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [daily, setDaily] = useState<DailyResult | null>(null);
   const dailyStreakRef = useRef(0);
+  const [muted, setMutedState] = useState(false);
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
@@ -185,6 +187,7 @@ function AppInner() {
 
   useEffect(() => {
     track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
+    initSound().then(() => setMutedState(isMuted())).catch(() => {});
     // Первый запуск (не по инвайт-ссылке) → показать онбординг.
     if (!initialRoom) {
       AsyncStorage.getItem(ONBOARDED_KEY)
@@ -247,6 +250,7 @@ function AppInner() {
     const delta = state.score - prevScore.current;
     if (delta > 0) {
       setWallet((w) => addCoins(w, delta));
+      playSfx('eat');
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
@@ -262,6 +266,7 @@ function AppInner() {
       if (next !== b) AsyncStorage.setItem(BEST_KEY, String(next)).catch(() => {});
       return next;
     });
+    playSfx('crash');
     if (walletLoaded.current) saveWallet(walletRef.current);
     // облачная синхронизация кошелька/рекорда (кросс-девайс)
     const uid = profileRef.current?.id;
@@ -532,6 +537,14 @@ function AppInner() {
                 <Text style={styles.bestPillLabel}>BEST</Text>
                 <Text style={styles.bestPillVal}>{best}</Text>
               </View>
+              <TouchScale
+                style={styles.soundChip}
+                haptic={false}
+                onPress={() => setMutedState(toggleMuted())}
+                accessibilityLabel="toggle-sound"
+              >
+                <Text style={styles.soundChipText}>{muted ? '🔇' : '🔊'}</Text>
+              </TouchScale>
             </View>
 
             <TouchScale style={[styles.ctaWrap, styles.wide]} onPress={() => setMode('solo')} accessibilityLabel="play-solo">
@@ -832,6 +845,8 @@ const styles = StyleSheet.create({
   bestPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.borderGlass },
   bestPillLabel: { fontFamily: fonts.bodyBold, color: COLORS.textDim, fontSize: 10, letterSpacing: 2 },
   bestPillVal: { fontFamily: fonts.num, color: COLORS.brand1, fontSize: 16 },
+  soundChip: { backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderGlass },
+  soundChipText: { fontSize: 16 },
   menuCta: { paddingVertical: 14, alignItems: 'center' },
   menuCtaText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 17, letterSpacing: 0.5 },
   menuGhostRow: { flexDirection: 'row', gap: 10 },
