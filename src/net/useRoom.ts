@@ -75,6 +75,12 @@ export function useRoom() {
   const joinWatchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const myRatingRef = useRef(1000); // для бот-фолбэка
   const botFallbackRef = useRef<(() => void) | null>(null);
+  // T62 нетокод-устойчивость
+  const seqRef = useRef(0); // счётчик исходящих состояний (хост)
+  const lastSeqRef = useRef(0); // последний принятый seq (гость) — дроп устаревших
+  const lastInputRef = useRef<Direction | null>(null); // последний ввод гостя (для resend)
+  const inputRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const netBadSinceRef = useRef(0); // когда канал упал (для дебаунса netError)
 
   const apply = useCallback((s: DuelState | null) => {
     duelRef.current = s;
@@ -84,6 +90,15 @@ export function useRoom() {
   const broadcast = useCallback((event: string, payload: Record<string, unknown>) => {
     channelRef.current?.send({ type: 'broadcast', event, payload });
   }, []);
+
+  // Хост: рассылка состояния с возрастающим seq (гость дропает устаревшие/дубликаты).
+  const broadcastState = useCallback(
+    (s: DuelState) => {
+      seqRef.current += 1;
+      channelRef.current?.send({ type: 'broadcast', event: 'state', payload: { state: s, seq: seqRef.current } });
+    },
+    [],
+  );
 
   const stopLoop = useCallback(() => {
     if (loopRef.current) {
@@ -133,20 +148,20 @@ export function useRoom() {
       if (!cur || cur.status !== 'playing') return;
       const next = duelStep(cur);
       apply(next);
-      broadcast('state', { state: next });
+      broadcastState(next);
       if (next.status === 'roundOver') {
         stopLoop();
         breakRef.current = setTimeout(() => {
           const nr = duelNextRound(duelRef.current!);
           apply(nr);
-          broadcast('state', { state: nr });
+          broadcastState(nr);
           startLoop();
         }, ROUND_BREAK_MS);
       } else if (next.status === 'matchOver') {
         stopLoop();
       }
     }, TICK_MS);
-  }, [apply, broadcast, stopLoop]);
+  }, [apply, broadcastState, stopLoop]);
 
   const startGame = useCallback(() => {
     if (roleRef.current !== 'host') return;
@@ -154,9 +169,9 @@ export function useRoom() {
     setOppLeft(false);
     const init = duelNewMatch();
     apply(init);
-    broadcast('state', { state: init });
+    broadcastState(init);
     startLoop();
-  }, [apply, broadcast, startLoop]);
+  }, [apply, broadcastState, startLoop]);
 
   // Heartbeat: периодический пинг сопернику (для детекта тихого обрыва связи).
   const startHeartbeat = useCallback(() => {
@@ -176,7 +191,9 @@ export function useRoom() {
       const active = cur && (cur.status === 'playing' || cur.status === 'roundOver');
       if (!active || botRef.current || !peerEverRef.current) return;
       if (!channelOkRef.current) {
-        setNetError(true); // наша связь упала
+        // дебаунс: показываем «обрыв» только если связь упала дольше 2с (Realtime часто реконнектится сам)
+        if (!netBadSinceRef.current) netBadSinceRef.current = Date.now();
+        if (Date.now() - netBadSinceRef.current > 2000) setNetError(true);
         return;
       }
       if (Date.now() - lastPeerRef.current > PEER_TIMEOUT_MS) {
@@ -197,6 +214,10 @@ export function useRoom() {
       expectPeerRef.current = expectPeer;
       channelOkRef.current = false;
       lastPeerRef.current = Date.now();
+      seqRef.current = 0;
+      lastSeqRef.current = 0;
+      netBadSinceRef.current = 0;
+      lastInputRef.current = null;
 
       const ch = supabase.channel(`room-${roomCode}`, {
         config: { broadcast: { self: false }, presence: { key: asRole } },
@@ -205,7 +226,14 @@ export function useRoom() {
 
       ch.on('broadcast', { event: 'state' }, ({ payload }) => {
         lastPeerRef.current = Date.now();
-        if (roleRef.current === 'guest') apply(payload.state as DuelState);
+        if (roleRef.current !== 'guest') return;
+        const seq = typeof payload.seq === 'number' ? payload.seq : 0;
+        if (seq && seq <= lastSeqRef.current) return; // устаревшее/дубликат — дроп
+        lastSeqRef.current = seq;
+        const st = payload.state as DuelState;
+        apply(st);
+        // ввод гостя применён хостом → прекращаем ретрай
+        if (lastInputRef.current && st.dirs && st.dirs[1] === lastInputRef.current) lastInputRef.current = null;
       });
       ch.on('broadcast', { event: 'input' }, ({ payload }) => {
         lastPeerRef.current = Date.now();
@@ -221,7 +249,7 @@ export function useRoom() {
       ch.on('broadcast', { event: 'resync' }, () => {
         lastPeerRef.current = Date.now();
         if (roleRef.current === 'host' && duelRef.current) {
-          broadcast('state', { state: duelRef.current });
+          broadcastState(duelRef.current);
         }
       });
       ch.on('presence', { event: 'sync' }, () => {
@@ -246,6 +274,7 @@ export function useRoom() {
       ch.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           channelOkRef.current = true;
+          netBadSinceRef.current = 0;
           setNetError(false);
           lastPeerRef.current = Date.now();
           ch.track({ role: asRole, at: Date.now() });
@@ -273,12 +302,16 @@ export function useRoom() {
           channelOkRef.current = false;
           const cur = duelRef.current;
           const inMatch = cur && (cur.status === 'playing' || cur.status === 'roundOver');
-          if (inMatch) setNetError(true); // наш обрыв во время матча — Realtime сам переподключится
-          else setConn('error');
+          // во время матча не показываем сразу — Realtime часто сам реконнектится за <2с (дебаунс в watchdog)
+          if (inMatch) {
+            if (!netBadSinceRef.current) netBadSinceRef.current = Date.now();
+          } else {
+            setConn('error');
+          }
         }
       });
     },
-    [apply, broadcast, startHeartbeat, startWatchdog, handleOppGone, clearJoinWatch, stopHeartbeat, stopWatchdog],
+    [apply, broadcast, broadcastState, startHeartbeat, startWatchdog, handleOppGone, clearJoinWatch, stopHeartbeat, stopWatchdog],
   );
 
   const createRoom = useCallback(() => {
@@ -496,7 +529,14 @@ export function useRoom() {
         const cur = duelRef.current;
         if (cur) apply(duelTurn(cur, 0, dir));
       } else {
+        // ввод гостя fire-and-forget по сети → отправляем + один повтор через 90мс
+        // (надёжность при потере пакета). Повтор сам отменяется, когда хост отразит ход.
+        lastInputRef.current = dir;
         broadcast('input', { dir });
+        if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
+        inputRetryRef.current = setTimeout(() => {
+          if (lastInputRef.current) broadcast('input', { dir: lastInputRef.current });
+        }, 90);
       }
     },
     [apply, broadcast],
@@ -510,12 +550,17 @@ export function useRoom() {
     stopHeartbeat();
     stopWatchdog();
     cleanupMM();
+    if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
     matchedRef.current = false;
     rankedRef.current = false;
     botRef.current = false;
     peerEverRef.current = false;
     expectPeerRef.current = false;
     channelOkRef.current = false;
+    seqRef.current = 0;
+    lastSeqRef.current = 0;
+    netBadSinceRef.current = 0;
+    lastInputRef.current = null;
     setVsBot(false);
     setOppLeft(false);
     setNetError(false);
@@ -539,6 +584,7 @@ export function useRoom() {
       if (breakRef.current) clearTimeout(breakRef.current);
       if (botTimerRef.current) clearTimeout(botTimerRef.current);
       if (joinWatchRef.current) clearTimeout(joinWatchRef.current);
+      if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
       if (hbRef.current) clearInterval(hbRef.current);
       if (watchdogRef.current) clearInterval(watchdogRef.current);
       if (channelRef.current) supabase.removeChannel(channelRef.current);
