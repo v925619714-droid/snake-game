@@ -135,6 +135,13 @@ function AppInner() {
         : null,
     [],
   );
+  const initialFrom = useMemo(
+    () =>
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('from')
+        : null,
+    [],
+  );
   const [mode, setMode] = useState<'menu' | 'solo' | 'duel' | 'leaderboard' | 'account' | 'settings'>(initialRoom ? 'duel' : 'menu');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -216,6 +223,7 @@ function AppInner() {
 
   useEffect(() => {
     track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
+    if (initialRoom && initialFrom) track(EVENTS.challengeAccepted, { from: initialFrom });
     initSettings().catch(() => {});
     initSound().catch(() => {});
     // Первый запуск (не по инвайт-ссылке) → показать онбординг.

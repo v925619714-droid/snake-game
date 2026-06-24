@@ -15,7 +15,7 @@ import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
 import { play as playSfx } from '../lib/sound';
-import { shareResult } from '../lib/share';
+import { shareResult, GAME_URL } from '../lib/share';
 import { hLight, hMedium, hSuccess, hError, colorblindOn } from '../lib/settings';
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
@@ -44,9 +44,14 @@ export interface RatingChange {
   oppId: string | null;
 }
 
-function inviteUrl(code: string): string {
-  if (Platform.OS !== 'web' || typeof window === 'undefined' || !code) return '';
-  return `${window.location.origin}${window.location.pathname}?room=${code}`;
+function inviteUrl(code: string, from?: string): string {
+  if (!code) return '';
+  const base =
+    Platform.OS === 'web' && typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}`
+      : GAME_URL;
+  const f = from ? `&from=${encodeURIComponent(from)}` : '';
+  return `${base}?room=${code}${f}&utm_source=challenge`;
 }
 
 export default function DuelGame({
@@ -202,14 +207,32 @@ export default function DuelGame({
   }, [leave, onExit]);
 
   const copyInvite = useCallback(() => {
-    const url = inviteUrl(code);
+    const url = inviteUrl(code, myId);
     if (url && typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(url).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }).catch(() => {});
     }
-  }, [code]);
+  }, [code, myId]);
+
+  // Вызвать друга через системный share-лист (виральность).
+  const challengeFriend = useCallback(() => {
+    const url = inviteUrl(code, myId);
+    if (!url) return;
+    track(EVENTS.challengeCreated, { via: 'share' });
+    shareResult('Beat me 1v1 in Chroma Coil ⚡', url).then(() => {
+      if (typeof navigator !== 'undefined' && !(navigator as { share?: unknown }).share) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    });
+  }, [code, myId]);
+
+  const cancelSearch = useCallback(() => {
+    track(EVENTS.matchmakingCancel, { mode: modeRef.current });
+    leave();
+  }, [leave]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -279,7 +302,7 @@ export default function DuelGame({
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
               {conn === 'ready' ? 'Opponent found! Starting…' : 'Finding a ranked opponent…'}
             </Text>
-            <TouchScale style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
+            <TouchScale style={styles.altBtn} onPress={cancelSearch} accessibilityLabel="cancel-search">
               <Text style={styles.altBtnText}>Cancel</Text>
             </TouchScale>
           </View>
@@ -321,7 +344,7 @@ export default function DuelGame({
         {!ranked && conn === 'searching' && (
           <View style={styles.lobby}>
             <Text style={styles.status} accessibilityLabel="conn-searching">Searching for an opponent…</Text>
-            <TouchScale style={styles.altBtn} onPress={leave} accessibilityLabel="cancel-search">
+            <TouchScale style={styles.altBtn} onPress={cancelSearch} accessibilityLabel="cancel-search">
               <Text style={styles.altBtnText}>Cancel</Text>
             </TouchScale>
           </View>
@@ -333,10 +356,15 @@ export default function DuelGame({
               <View style={styles.codeBox}>
                 <Text style={styles.codeLabel}>Room code</Text>
                 <Text style={styles.codeValue} accessibilityLabel={`room-code-${code}`}>{code}</Text>
-                {!!inviteUrl(code) && (
-                  <TouchScale style={styles.copyBtn} onPress={copyInvite} accessibilityLabel="copy-invite">
-                    <Text style={styles.copyBtnText}>{copied ? 'Link copied!' : 'Copy invite link'}</Text>
-                  </TouchScale>
+                {!!inviteUrl(code, myId) && (
+                  <>
+                    <TouchScale style={styles.copyBtn} onPress={challengeFriend} accessibilityLabel="challenge-friend">
+                      <Text style={styles.copyBtnText}>{copied ? 'Link copied!' : 'Challenge a friend'}</Text>
+                    </TouchScale>
+                    <TouchScale style={styles.linkBtn} onPress={copyInvite} accessibilityLabel="copy-invite">
+                      <Text style={styles.linkText}>Copy invite link</Text>
+                    </TouchScale>
+                  </>
                 )}
                 <Text style={styles.codeHint}>Send the code or link to a friend</Text>
               </View>
@@ -639,6 +667,8 @@ const styles = StyleSheet.create({
   copyBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 18 },
   copyBtnText: { color: '#08130b', fontSize: 14, fontWeight: '700' },
   codeHint: { color: C.textDim, fontSize: 13 },
+  linkBtn: { paddingVertical: 4 },
+  linkText: { color: C.textDim, fontSize: 13 },
   status: { color: C.text, fontSize: 16 },
   rules: { gap: 4, alignItems: 'center', marginTop: 4 },
   rulesText: { color: C.textDim, fontSize: 13, textAlign: 'center' },
