@@ -33,6 +33,7 @@ export const EVENTS = {
   onboardingDone: 'onboarding_done',
   dailyClaim: 'daily_claim',
   share: 'share',
+  winStreak: 'win_streak',
   matchmakingStart: 'matchmaking_start',
   matchStart: 'match_start',
   roundEnd: 'round_end',

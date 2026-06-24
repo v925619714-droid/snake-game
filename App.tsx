@@ -38,6 +38,7 @@ import {
 } from './src/game/economy';
 import { SKINS, type Skin, getSkin } from './src/game/skins';
 import { computeDaily, dayKey, type DailyResult } from './src/game/daily';
+import { applyStreak, initialStreak, sanitizeStreak, type StreakState } from './src/game/streak';
 import DuelGame from './src/screens/DuelGame';
 import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
 import { type AuthUser, ensureSession } from './src/lib/auth';
@@ -61,6 +62,7 @@ const BEST_KEY = 'snake:best';
 const WALLET_KEY = 'snake:wallet';
 const ONBOARDED_KEY = 'snake:onboarded';
 const DAILY_KEY = 'snake:daily';
+const STREAK_KEY = 'snake:streak';
 
 function speedFor(score: number): number {
   return Math.max(70, 160 - score * 4);
@@ -108,6 +110,9 @@ function AppInner() {
   const dailyStreakRef = useRef(0);
   const [shareNote, setShareNote] = useState('');
   const [paused, setPaused] = useState(false);
+  const [streak, setStreak] = useState<StreakState>(initialStreak);
+  const streakRef = useRef(streak);
+  streakRef.current = streak;
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
@@ -221,6 +226,15 @@ function AppInner() {
         dailyStreakRef.current = streak;
         const res = computeDaily(last, streak, new Date());
         if (res.canClaim) setDaily(res);
+      })
+      .catch(() => {});
+    AsyncStorage.getItem(STREAK_KEY)
+      .then((raw) => {
+        if (raw) {
+          try {
+            setStreak(sanitizeStreak(JSON.parse(raw)));
+          } catch {}
+        }
       })
       .catch(() => {});
     loadProfile()
@@ -408,6 +422,18 @@ function AppInner() {
         vs_bot: r.vsBot,
       });
       saveProfile(np);
+      // серия побед + бонус-монеты на вехах
+      const sr = applyStreak(streakRef.current, r.result);
+      setStreak(sr.state);
+      AsyncStorage.setItem(STREAK_KEY, JSON.stringify(sr.state)).catch(() => {});
+      if (sr.bonus > 0) {
+        const nw = addCoins(walletRef.current, sr.bonus);
+        setWallet(nw);
+        saveWallet(nw);
+        const uid = profileRef.current?.id;
+        if (uid) pushWallet(uid, nw.coins, nw.owned, nw.selected, bestRef.current);
+        track(EVENTS.winStreak, { streak: sr.milestone, bonus: sr.bonus });
+      }
       // Авторитетный рейтинг считает сервер (ELO, кулдаун, анти-чит). Сверяем.
       submitMatch(r.result, r.oppRating, r.vsBot, r.oppId)
         .then((s) => {
@@ -420,7 +446,7 @@ function AppInner() {
         })
         .catch(() => {});
     },
-    [],
+    [saveWallet],
   );
 
   const finishOnboarding = useCallback(() => {
@@ -559,6 +585,12 @@ function AppInner() {
                 <Text style={styles.bestPillLabel}>BEST</Text>
                 <Text style={styles.bestPillVal}>{best}</Text>
               </View>
+              {streak.cur > 0 && (
+                <View style={styles.bestPill} accessibilityLabel={`streak-${streak.cur}`}>
+                  <Text style={styles.bestPillLabel}>🔥</Text>
+                  <Text style={styles.bestPillVal}>{streak.cur}</Text>
+                </View>
+              )}
               <TouchScale
                 style={styles.soundChip}
                 onPress={() => setMode('settings')}
