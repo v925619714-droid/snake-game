@@ -61,7 +61,7 @@ export default function DuelGame({
   const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - 320, 420)));
   const cell = boardPx / DUEL_BOARD;
 
-  const { conn, role, code, duel, oppRating, vsBot, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
+  const { conn, role, code, duel, oppRating, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [ratingChange, setRatingChange] = useState<RatingChange | null>(null);
@@ -456,6 +456,18 @@ export default function DuelGame({
             </View>
           )}
 
+          {netError && duel.status !== 'matchOver' && (
+            <View style={styles.overlay}>
+              <FadePop style={styles.overlayInner}>
+                <Text style={styles.overlayTitle}>Connection lost</Text>
+                <Text style={styles.overlaySub}>Reconnecting…</Text>
+                <TouchScale style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-neterror-leave">
+                  <Text style={styles.bigBtnText}>Leave</Text>
+                </TouchScale>
+              </FadePop>
+            </View>
+          )}
+
           {duel.status === 'matchOver' && (
             <View style={styles.overlay}>
               {duel.matchWinner === you && <Confetti />}
@@ -463,13 +475,14 @@ export default function DuelGame({
                 <Text style={styles.overlayTitle}>
                   {duel.matchWinner === you ? 'You win!' : duel.matchWinner === -1 ? "It's a draw" : 'You lose'}
                 </Text>
+                {oppLeft && <Text style={styles.overlaySub}>Opponent left — you win by forfeit</Text>}
                 <Text style={styles.overlaySub}>{duel.matchWins[you]} : {duel.matchWins[opp]}</Text>
                 {ranked && ratingChange && (
                   <Text style={[styles.ratingDelta, { color: ratingChange.delta >= 0 ? C.accent : '#ff6b6b' }]}>
                     {ratingChange.delta >= 0 ? '+' : ''}{ratingChange.delta} → {ratingChange.newRating}
                   </Text>
                 )}
-                {ranked ? (
+                {ranked || oppLeft ? (
                   <TouchScale style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-back">
                     <Text style={styles.bigBtnText}>Done</Text>
                   </TouchScale>
