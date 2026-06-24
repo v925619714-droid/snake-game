@@ -23,6 +23,22 @@ export async function pushProfile(p: Profile): Promise<void> {
   } catch {}
 }
 
+// Облачный профиль по id аккаунта (auth.uid()). null — если нет строки/офлайн.
+export async function fetchProfileById(id: string): Promise<LeaderRow | null> {
+  if (!hasSupabase || !id) return null;
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id,name,rating,wins,losses')
+      .eq('id', id)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as LeaderRow;
+  } catch {
+    return null;
+  }
+}
+
 // Топ игроков по рейтингу.
 export async function fetchLeaderboard(limit = 50): Promise<LeaderRow[]> {
   if (!hasSupabase) return [];

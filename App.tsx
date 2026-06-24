@@ -40,10 +40,11 @@ import {
 import { SKINS, type Skin, getSkin } from './src/game/skins';
 import DuelGame from './src/screens/DuelGame';
 import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
-import { ensureSession } from './src/lib/auth';
+import { type AuthUser, ensureSession } from './src/lib/auth';
+import Account from './src/screens/Account';
 import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
-import { pushProfile } from './src/lib/leaderboard';
+import { fetchProfileById, pushProfile } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
@@ -94,8 +95,9 @@ export default function App() {
         : null,
     [],
   );
-  const [mode, setMode] = useState<'solo' | 'duel' | 'leaderboard'>(initialRoom ? 'duel' : 'solo');
+  const [mode, setMode] = useState<'solo' | 'duel' | 'leaderboard' | 'account'>(initialRoom ? 'duel' : 'solo');
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [duelRanked, setDuelRanked] = useState(false);
   const prevScore = useRef(0);
   const walletLoaded = useRef(false);
@@ -108,28 +110,44 @@ export default function App() {
     AsyncStorage.setItem(WALLET_KEY, JSON.stringify(w)).catch(() => {});
   }, []);
 
+  // Синхронизация профиля с аккаунтом: анонимный вход → uid; если у аккаунта уже есть
+  // облачный профиль (другое устройство) — берём его (кросс-девайс), иначе переносим
+  // локальный прогресс под uid. Офлайн-безопасно. Вызывается на старте и при входе/выходе.
+  const applyAccount = useCallback(async (base: Profile) => {
+    const user = await ensureSession();
+    setAuthUser(user);
+    if (!user) {
+      pushProfile(base);
+      identify(base.id, { name: base.name, rating: base.rating, wins: base.wins, losses: base.losses, tier: tierFor(base.rating).name });
+      return;
+    }
+    const cloud = await fetchProfileById(user.id);
+    let p: Profile;
+    if (cloud) {
+      p = { id: user.id, name: cloud.name || base.name, rating: cloud.rating, wins: cloud.wins, losses: cloud.losses };
+    } else {
+      p = { ...base, id: user.id };
+      pushProfile(p);
+    }
+    await saveProfile(p);
+    setProfile(p);
+    identify(p.id, {
+      name: p.name,
+      rating: p.rating,
+      wins: p.wins,
+      losses: p.losses,
+      tier: tierFor(p.rating).name,
+      email: user.email ?? undefined,
+      anon: user.isAnon,
+    });
+  }, []);
+
   useEffect(() => {
     track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
     loadProfile()
-      .then(async (p) => {
-        setProfile(p);
-        // Фоновая привязка к аккаунту (анонимный вход) — устойчивая identity (uid).
-        // Офлайн-безопасно: без сети ensureSession вернёт null, остаёмся на локальном id.
-        const user = await ensureSession();
-        let fp = p;
-        if (user && user.id !== p.id) {
-          fp = { ...p, id: user.id };
-          await saveProfile(fp);
-          setProfile(fp);
-        }
-        pushProfile(fp);
-        identify(fp.id, {
-          name: fp.name,
-          rating: fp.rating,
-          wins: fp.wins,
-          losses: fp.losses,
-          tier: tierFor(fp.rating).name,
-        });
+      .then((p) => {
+        setProfile(p); // мгновенный старт на локальном профиле
+        applyAccount(p); // фоновая привязка к аккаунту (офлайн-безопасно)
       })
       .catch(() => {});
     AsyncStorage.getItem(BEST_KEY)
@@ -283,6 +301,20 @@ export default function App() {
     return <View style={styles.boot} />;
   }
 
+  if (mode === 'account') {
+    return (
+      <GestureHandlerRootView style={styles.root}>
+        <Account
+          user={authUser}
+          onBack={() => setMode('solo')}
+          onChanged={() => {
+            if (profile) applyAccount(profile);
+          }}
+        />
+      </GestureHandlerRootView>
+    );
+  }
+
   if (mode === 'leaderboard') {
     return (
       <GestureHandlerRootView style={styles.root}>
@@ -320,6 +352,11 @@ export default function App() {
               <Text style={{ color: COLORS.brand3 }}>COIL</Text>
             </Text>
             <Text style={styles.subtitle}>COLOR DUEL ARENA</Text>
+            <TouchScale style={styles.acctChip} onPress={() => setMode('account')} accessibilityLabel="account">
+              <Text style={styles.acctText} numberOfLines={1}>
+                {authUser && !authUser.isAnon && authUser.email ? authUser.email : 'Guest · sign in to sync'}
+              </Text>
+            </TouchScale>
           </View>
 
           <View style={styles.scoreRow}>
@@ -584,6 +621,8 @@ const styles = StyleSheet.create({
   header: { alignItems: 'center', gap: 3 },
   title: { fontFamily: fonts.display, fontSize: 30, letterSpacing: 3 },
   subtitle: { fontFamily: fonts.bodyBold, color: COLORS.textFaint, fontSize: 10, letterSpacing: 5 },
+  acctChip: { marginTop: 4, backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderGlass, maxWidth: 260 },
+  acctText: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 11 },
   scoreRow: { flexDirection: 'row', gap: 12 },
   scoreBox: {
     backgroundColor: COLORS.surface,
