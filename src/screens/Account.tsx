@@ -49,10 +49,11 @@ export default function Account({
     const r = await verifyEmailCode(email, code);
     setBusy(false);
     if (r.ok) {
-      setMsg('Signed in! Progress now syncs across devices.');
+      setMsg('Signed in! Taking you back…');
       setStage('idle');
       setCode('');
       onChanged();
+      setTimeout(onBack, 900); // авто-возврат на главный экран
     } else {
       setMsg(r.error || 'Invalid or expired code.');
     }
