@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,11 +25,19 @@ export default function Account({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
+  const [cooldown, setCooldown] = useState(0); // анти-спам: пауза перед повторной отправкой
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
 
   const signedIn = Boolean(user && !user.isAnon && user.email);
 
   const send = async () => {
+    if (cooldown > 0 || busy) return;
     if (!email.includes('@')) {
       setMsg('Enter a valid email');
       return;
@@ -40,9 +48,11 @@ export default function Account({
     setBusy(false);
     if (r.ok) {
       setStage('code');
+      setCooldown(30); // не даём спамить отправку
       setMsg('Code sent — check your email.');
     } else {
-      setMsg(r.error || 'Could not send the code.');
+      // generic-сообщение (не светим внутренние ошибки провайдера)
+      setMsg('Could not send the code. Please try again shortly.');
     }
   };
 
@@ -123,9 +133,9 @@ export default function Account({
           />
 
           {stage === 'idle' ? (
-            <TouchScale style={styles.cta} onPress={send} disabled={busy} accessibilityLabel="send-code">
+            <TouchScale style={styles.cta} onPress={send} disabled={busy || cooldown > 0} accessibilityLabel="send-code">
               <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaGrad}>
-                <Text style={styles.ctaText}>{busy ? 'Sending…' : 'Send code'}</Text>
+                <Text style={styles.ctaText}>{cooldown > 0 ? `Resend in ${cooldown}s` : busy ? 'Sending…' : 'Send code'}</Text>
               </LinearGradient>
             </TouchScale>
           ) : (
