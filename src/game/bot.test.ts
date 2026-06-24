@@ -22,6 +22,7 @@ function duel(p: Partial<DuelState> = {}): DuelState {
     roundWinner: -1,
     matchWinner: -1,
     causes: [null, null],
+    boosts: [0, 0],
     ...p,
   };
 }

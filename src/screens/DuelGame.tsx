@@ -364,6 +364,11 @@ export default function DuelGame({
         />
       </View>
       <Text style={[styles.youHint, { color: mine.head }]}>You are {mine.name} — eat {mine.name} food</Text>
+      {duel.boosts[you] > 0 && (
+        <View style={styles.boostPill}>
+          <Text style={styles.boostText}>⚡ SPEED ×2</Text>
+        </View>
+      )}
 
       {(() => {
         const total = duel.roundScore[you] + duel.roundScore[opp];
@@ -414,6 +419,19 @@ export default function DuelGame({
             }),
           )}
           {duel.foods.map((f, i) => {
+            if (f.boost) {
+              // Буст-еда (нейтральная, скорость): золотой кружок со свечением + белое ядро.
+              return (
+                <View
+                  key={`f-${i}`}
+                  style={{ position: 'absolute', left: f.pos.x * cell, top: f.pos.y * cell, width: cell, height: cell, padding: 0.5 }}
+                >
+                  <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: '#FFE680', shadowColor: '#FFD75E', shadowOpacity: 1, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 8, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: cell * 0.34, height: cell * 0.34, borderRadius: cell * 0.2, backgroundColor: '#fff' }} />
+                  </View>
+                </View>
+              );
+            }
             const blink = f.blink ?? 0;
             // Пока мигает — пульсирует прозрачностью (видно, что еда ещё инертна).
             const opacity = blink > 0 ? (Math.floor(blink / 2) % 2 === 0 ? 0.25 : 0.7) : 1;
@@ -575,6 +593,8 @@ const styles = StyleSheet.create({
   roundText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 14 },
   roundSub: { fontFamily: fonts.body, color: C.textDim, fontSize: 11 },
   youHint: { fontFamily: fonts.bodyBold, fontSize: 13 },
+  boostPill: { backgroundColor: 'rgba(255,215,94,0.18)', borderColor: '#FFD75E', borderWidth: 1, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 12 },
+  boostText: { fontFamily: fonts.bodyBold, color: '#FFE680', fontSize: 12, letterSpacing: 1 },
   board: { backgroundColor: '#0C111B', borderRadius: 16, overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(124,247,212,0.20)' },
   eye: { position: 'absolute', backgroundColor: '#06121e' },
   overlay: {
