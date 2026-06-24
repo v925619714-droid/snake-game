@@ -2,10 +2,12 @@
 // Работает и на web, и на native. Без ключа — полностью no-op (как hasSupabase),
 // поэтому код безопасно живёт в проде и «включается» добавлением EXPO_PUBLIC_POSTHOG_KEY.
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 const KEY = process.env.EXPO_PUBLIC_POSTHOG_KEY ?? '';
 const HOST = (process.env.EXPO_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com').replace(/\/+$/, '');
-const APP_VERSION = '1.0.0';
+// Единый источник версии — app.json (через expo-constants), чтобы не дублировать вручную.
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 export const hasAnalytics = Boolean(KEY);
 

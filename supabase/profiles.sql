@@ -31,14 +31,16 @@ grant select on public.profiles to anon, authenticated;
 -- Рейтинг/wins/losses с клиента НЕ принимаются (управляет submit_match) — анти-чит.
 create or replace function public.upsert_profile(p_id text, p_name text, p_rating int, p_wins int, p_losses int)
 returns void language plpgsql security definer set search_path = public as $$
-declare me text;
+declare me text; nm text;
 begin
   me := auth.uid()::text;
   if me is null then return; end if;
+  -- имя: максимум 24 символа, без управляющих символов (анти-абьюз через прямой RPC)
+  nm := nullif(regexp_replace(left(coalesce(p_name,''), 24), '[\x00-\x1F\x7F]', '', 'g'), '');
   insert into public.profiles(id, name, rating, wins, losses, updated_at)
-  values (me, coalesce(nullif(p_name,''),'Player'), 1000, 0, 0, now())
+  values (me, coalesce(nm,'Player'), 1000, 0, 0, now())
   on conflict (id) do update set
-    name = coalesce(nullif(p_name,''), public.profiles.name),
+    name = coalesce(nm, public.profiles.name),
     updated_at = now();
 end;
 $$;
@@ -97,15 +99,16 @@ begin
 end;
 $$;
 
--- T28: удаление аккаунта (in-app, Apple-требование) — удаляет строку профиля auth.uid().
--- Запись auth.users анонимна/эфемерна; полное удаление auth-записи — через админ-функцию (TODO).
+-- T28: удаление аккаунта (in-app, Apple/GDPR-требование) — ПОЛНОЕ: профиль + запись auth.users.
+-- SECURITY DEFINER (owner = privileged) → может удалить из auth.users свою строку auth.uid().
 create or replace function public.delete_my_account()
 returns void language plpgsql security definer set search_path = public as $$
-declare me text;
+declare me uuid;
 begin
-  me := auth.uid()::text;
+  me := auth.uid();
   if me is null then return; end if;
-  delete from public.profiles where id = me;
+  delete from public.profiles where id = me::text;
+  delete from auth.users where id = me;
 end;
 $$;
 
