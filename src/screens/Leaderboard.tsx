@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tierFor } from '../game/rating';
 import { type LeaderRow, fetchLeaderboard } from '../lib/leaderboard';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +17,7 @@ const C = {
 };
 
 export default function Leaderboard({ myId, onBack }: { myId: string; onBack: () => void }) {
+  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<LeaderRow[] | null>(null);
 
   const load = useCallback(() => {
@@ -28,7 +30,7 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
   }, [load]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
       <Text style={styles.title}>Leaderboard</Text>
 
       {rows === null ? (

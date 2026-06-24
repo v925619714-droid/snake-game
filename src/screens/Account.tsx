@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette as C, gradients, fonts } from '../theme/tokens';
 import { TouchScale } from '../ui/anim';
@@ -24,6 +25,7 @@ export default function Account({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const signedIn = Boolean(user && !user.isAnon && user.email);
 
@@ -90,7 +92,7 @@ export default function Account({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
       <Text style={styles.title}>Account</Text>
 
       {signedIn ? (
