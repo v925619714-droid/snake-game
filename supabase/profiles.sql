@@ -9,6 +9,13 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+-- Кошелёк/прогресс (кросс-девайс): монеты, купленные скины, выбранный скин, рекорд соло.
+-- Косметика — не влияет на рейтинг, поэтому пишется без анти-чита (отдельный RPC upsert_wallet).
+alter table public.profiles add column if not exists coins int not null default 0;
+alter table public.profiles add column if not exists owned text[] not null default '{classic}';
+alter table public.profiles add column if not exists selected text not null default 'classic';
+alter table public.profiles add column if not exists best int not null default 0;
+
 alter table public.profiles enable row level security;
 
 drop policy if exists "profiles_read" on public.profiles;
@@ -45,3 +52,20 @@ end;
 $$;
 
 grant execute on function public.upsert_profile(text,text,int,int,int) to anon;
+
+-- Запись кошелька/прогресса (косметика, без анти-чита). best — только вверх.
+create or replace function public.upsert_wallet(p_id text, p_coins int, p_owned text[], p_selected text, p_best int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles(id, coins, owned, selected, best, updated_at)
+  values (p_id, greatest(0,coalesce(p_coins,0)), coalesce(p_owned,'{classic}'), coalesce(nullif(p_selected,''),'classic'), greatest(0,coalesce(p_best,0)), now())
+  on conflict (id) do update set
+    coins = greatest(0, coalesce(excluded.coins,0)),
+    owned = coalesce(excluded.owned, public.profiles.owned),
+    selected = coalesce(nullif(excluded.selected,''), public.profiles.selected),
+    best = greatest(public.profiles.best, coalesce(excluded.best,0)),
+    updated_at = now();
+end;
+$$;
+
+grant execute on function public.upsert_wallet(text,int,text[],text,int) to anon;

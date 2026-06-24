@@ -44,7 +44,7 @@ import { type AuthUser, ensureSession } from './src/lib/auth';
 import Account from './src/screens/Account';
 import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
-import { fetchProfileById, pushProfile } from './src/lib/leaderboard';
+import { fetchProfileById, pushProfile, pushWallet } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
@@ -103,6 +103,12 @@ export default function App() {
   const walletLoaded = useRef(false);
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
+  const bestRef = useRef(best);
+  bestRef.current = best;
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  // Однажды сверились с облаком — локальная загрузка из AsyncStorage больше не перетирает.
+  const reconciledRef = useRef(false);
 
   const skin = getSkin(wallet.selected);
 
@@ -131,6 +137,28 @@ export default function App() {
     }
     await saveProfile(p);
     setProfile(p);
+
+    // Кошелёк/прогресс (кросс-девайс): если в облаке есть осмысленный прогресс — принимаем его
+    // (снимок монет/скинов целиком; рекорд берём максимум). Иначе заливаем локальный под этот uid.
+    const cloudHasProgress =
+      !!cloud && ((cloud.owned?.length ?? 0) > 1 || (cloud.coins ?? 0) > 0 || (cloud.best ?? 0) > 0);
+    if (cloud && cloudHasProgress) {
+      const adopted = sanitizeWallet({ coins: cloud.coins, owned: cloud.owned, selected: cloud.selected });
+      setWallet(adopted);
+      saveWallet(adopted);
+      const mergedBest = Math.max(bestRef.current, cloud.best || 0);
+      bestRef.current = mergedBest;
+      setBest(mergedBest);
+      AsyncStorage.setItem(BEST_KEY, String(mergedBest)).catch(() => {});
+      // если локальный рекорд был выше облачного — подтянуть облако вверх
+      if ((cloud.best || 0) < mergedBest) {
+        pushWallet(user.id, adopted.coins, adopted.owned, adopted.selected, mergedBest);
+      }
+    } else {
+      pushWallet(user.id, walletRef.current.coins, walletRef.current.owned, walletRef.current.selected, bestRef.current);
+    }
+    reconciledRef.current = true;
+
     identify(p.id, {
       name: p.name,
       rating: p.rating,
@@ -140,7 +168,7 @@ export default function App() {
       email: user.email ?? undefined,
       anon: user.isAnon,
     });
-  }, []);
+  }, [saveWallet]);
 
   useEffect(() => {
     track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
@@ -152,13 +180,14 @@ export default function App() {
       .catch(() => {});
     AsyncStorage.getItem(BEST_KEY)
       .then((v) => {
+        if (reconciledRef.current) return; // облако уже отдало рекорд — не перетираем
         const n = v ? parseInt(v, 10) : 0;
         if (Number.isFinite(n) && n > 0) setBest(n);
       })
       .catch(() => {});
     AsyncStorage.getItem(WALLET_KEY)
       .then((raw) => {
-        if (raw) {
+        if (raw && !reconciledRef.current) {
           try {
             setWallet(sanitizeWallet(JSON.parse(raw)));
           } catch {}
@@ -196,6 +225,13 @@ export default function App() {
       return next;
     });
     if (walletLoaded.current) saveWallet(walletRef.current);
+    // облачная синхронизация кошелька/рекорда (кросс-девайс)
+    const uid = profileRef.current?.id;
+    if (uid) {
+      const nextBest = Math.max(bestRef.current, state.score);
+      const w = walletRef.current;
+      pushWallet(uid, w.coins, w.owned, w.selected, nextBest);
+    }
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     }
@@ -258,6 +294,8 @@ export default function App() {
       }
       setWallet(nw);
       saveWallet(nw);
+      const uid = profileRef.current?.id;
+      if (uid) pushWallet(uid, nw.coins, nw.owned, nw.selected, bestRef.current);
     },
     [saveWallet],
   );
@@ -268,6 +306,8 @@ export default function App() {
       track(EVENTS.skinSelected, { skin: id });
       setWallet(nw);
       saveWallet(nw);
+      const uid = profileRef.current?.id;
+      if (uid) pushWallet(uid, nw.coins, nw.owned, nw.selected, bestRef.current);
     },
     [saveWallet],
   );
