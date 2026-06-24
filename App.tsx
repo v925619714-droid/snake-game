@@ -48,7 +48,7 @@ import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
 import { fetchProfileById, pushProfile, pushWallet, submitMatch } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
-import { initSound, play as playSfx } from './src/lib/sound';
+import { initSound, play as playSfx, releaseSound } from './src/lib/sound';
 import { shareResult } from './src/lib/share';
 import { initSettings, hLight, hError, hSuccess } from './src/lib/settings';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -96,6 +96,9 @@ function AppInner() {
   }, [foodPulse]);
   const foodScale = foodPulse.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.04] });
 
+  // Освобождение аудио-плееров при полном анмаунте приложения.
+  useEffect(() => () => releaseSound(), []);
+
   const [state, setState] = useState<GameState>(() => createInitialState());
   const [best, setBest] = useState(0);
   const [wallet, setWallet] = useState<Wallet>(initialWallet);
@@ -124,6 +127,10 @@ function AppInner() {
   bestRef.current = best;
   const profileRef = useRef(profile);
   profileRef.current = profile;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const scoreRef = useRef(state.score);
+  scoreRef.current = state.score;
   // Однажды сверились с облаком — локальная загрузка из AsyncStorage больше не перетирает.
   const reconciledRef = useRef(false);
 
@@ -243,11 +250,19 @@ function AppInner() {
       });
   }, []);
 
+  // Самопланирующийся цикл: скорость читаем из scoreRef каждый тик, поэтому эффект НЕ
+  // пересоздаётся на каждую съеденную еду (раньше setInterval с зависимостью от score
+  // давал рывок таймингов после еды).
   useEffect(() => {
     if (state.status !== 'playing' || paused) return;
-    const id = setInterval(() => setState((s) => step(s)), speedFor(state.score));
-    return () => clearInterval(id);
-  }, [state.status, state.score, paused]);
+    let id: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setState((s) => step(s));
+      id = setTimeout(tick, speedFor(scoreRef.current));
+    };
+    id = setTimeout(tick, speedFor(scoreRef.current));
+    return () => clearTimeout(id);
+  }, [state.status, paused]);
 
   useEffect(() => {
     const delta = state.score - prevScore.current;
@@ -262,11 +277,12 @@ function AppInner() {
   useEffect(() => {
     if (state.status !== 'over') return;
     track(EVENTS.soloGameOver, { score: state.score, best, new_best: state.score > best });
-    setBest((b) => {
-      const next = Math.max(b, state.score);
-      if (next !== b) AsyncStorage.setItem(BEST_KEY, String(next)).catch(() => {});
-      return next;
-    });
+    // рекорд: считаем по bestRef, side-effect (AsyncStorage) вне setState-апдейтера
+    const nextBestRec = Math.max(bestRef.current, state.score);
+    if (nextBestRec !== bestRef.current) {
+      setBest(nextBestRec);
+      AsyncStorage.setItem(BEST_KEY, String(nextBestRec)).catch(() => {});
+    }
     playSfx('crash');
     hError();
     if (walletLoaded.current) saveWallet(walletRef.current);
@@ -280,11 +296,11 @@ function AppInner() {
   }, [state.status, state.score, saveWallet]);
 
   const handleTurn = useCallback((dir: Direction) => {
-    setState((s) => {
-      const ns = turn(s, dir);
-      if (ns !== s && ns.status === 'playing') hLight();
-      return ns;
-    });
+    const s = stateRef.current;
+    const ns = turn(s, dir);
+    if (ns === s) return; // невалидный поворот (разворот/не в игре)
+    setState(ns);
+    if (ns.status === 'playing') hLight(); // side-effect вне setState-апдейтера
   }, []);
 
   const handleStart = useCallback(() => {
@@ -373,35 +389,34 @@ function AppInner() {
   const handleRatingResult = useCallback(
     (r: { result: 'win' | 'loss' | 'draw'; newRating: number; delta: number; oppRating: number; vsBot: boolean; oppId: string | null }) => {
       // Оптимистично обновляем локально (мгновенный UI), затем сверяем с сервером.
-      setProfile((p) => {
-        if (!p) return p;
-        const np: Profile = {
-          ...p,
-          rating: r.newRating,
-          wins: p.wins + (r.result === 'win' ? 1 : 0),
-          losses: p.losses + (r.result === 'loss' ? 1 : 0),
-        };
-        track(EVENTS.ratingChange, {
-          result: r.result,
-          old_rating: p.rating,
-          new_rating: r.newRating,
-          delta: r.delta,
-          tier: tierFor(r.newRating).name,
-          vs_bot: r.vsBot,
-        });
-        saveProfile(np);
-        return np;
+      // Side-effects (track/save/submit) — вне setState-апдейтера (через profileRef).
+      const p = profileRef.current;
+      if (!p) return;
+      const np: Profile = {
+        ...p,
+        rating: r.newRating,
+        wins: p.wins + (r.result === 'win' ? 1 : 0),
+        losses: p.losses + (r.result === 'loss' ? 1 : 0),
+      };
+      setProfile(np);
+      track(EVENTS.ratingChange, {
+        result: r.result,
+        old_rating: p.rating,
+        new_rating: r.newRating,
+        delta: r.delta,
+        tier: tierFor(r.newRating).name,
+        vs_bot: r.vsBot,
       });
+      saveProfile(np);
       // Авторитетный рейтинг считает сервер (ELO, кулдаун, анти-чит). Сверяем.
       submitMatch(r.result, r.oppRating, r.vsBot, r.oppId)
         .then((s) => {
           if (!s) return;
-          setProfile((p) => {
-            if (!p || p.rating === s.rating) return p;
-            const np: Profile = { ...p, rating: s.rating };
-            saveProfile(np);
-            return np;
-          });
+          const cur = profileRef.current;
+          if (!cur || cur.rating === s.rating) return;
+          const np2: Profile = { ...cur, rating: s.rating };
+          setProfile(np2);
+          saveProfile(np2);
         })
         .catch(() => {});
     },

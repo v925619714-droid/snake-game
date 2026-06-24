@@ -62,3 +62,14 @@ export function play(name: Sfx): void {
     p.play();
   } catch {}
 }
+
+// Освободить нативные ресурсы плееров (на полном анмаунте приложения).
+export function releaseSound(): void {
+  (Object.keys(players) as Sfx[]).forEach((k) => {
+    try {
+      players[k]?.release();
+    } catch {}
+    delete players[k];
+  });
+  loaded = false;
+}
