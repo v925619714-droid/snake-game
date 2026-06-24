@@ -42,6 +42,7 @@ import DuelGame from './src/screens/DuelGame';
 import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
 import { type AuthUser, ensureSession } from './src/lib/auth';
 import Account from './src/screens/Account';
+import Onboarding from './src/screens/Onboarding';
 import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
 import { fetchProfileById, pushProfile, pushWallet } from './src/lib/leaderboard';
@@ -54,6 +55,7 @@ import { TouchScale, FadePop } from './src/ui/anim';
 
 const BEST_KEY = 'snake:best';
 const WALLET_KEY = 'snake:wallet';
+const ONBOARDED_KEY = 'snake:onboarded';
 
 function speedFor(score: number): number {
   return Math.max(70, 160 - score * 4);
@@ -88,6 +90,7 @@ export default function App() {
   const [best, setBest] = useState(0);
   const [wallet, setWallet] = useState<Wallet>(initialWallet);
   const [showShop, setShowShop] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
@@ -172,6 +175,14 @@ export default function App() {
 
   useEffect(() => {
     track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
+    // Первый запуск (не по инвайт-ссылке) → показать онбординг.
+    if (!initialRoom) {
+      AsyncStorage.getItem(ONBOARDED_KEY)
+        .then((v) => {
+          if (v !== '1') setShowOnboarding(true);
+        })
+        .catch(() => {});
+    }
     loadProfile()
       .then((p) => {
         setProfile(p); // мгновенный старт на локальном профиле
@@ -337,6 +348,11 @@ export default function App() {
     [],
   );
 
+  const finishOnboarding = useCallback(() => {
+    setShowOnboarding(false);
+    AsyncStorage.setItem(ONBOARDED_KEY, '1').catch(() => {});
+  }, []);
+
   if (!fontsLoaded) {
     return <View style={styles.boot} />;
   }
@@ -464,6 +480,14 @@ export default function App() {
             <Text style={styles.ghostText}>Leaderboard</Text>
           </TouchScale>
 
+          <TouchScale
+            style={styles.helpLink}
+            onPress={() => setShowOnboarding(true)}
+            accessibilityLabel="how-to-play"
+          >
+            <Text style={styles.helpText}>How to play</Text>
+          </TouchScale>
+
           <GestureDetector gesture={swipe}>
             <View style={[styles.board, { width: boardPx, height: boardPx }]}>
               {state.snake.map((p, i) => {
@@ -550,6 +574,7 @@ export default function App() {
             />
           )}
         </View>
+        {showOnboarding && <Onboarding onDone={finishOnboarding} />}
       </LinearGradient>
     </GestureHandlerRootView>
   );
@@ -709,6 +734,8 @@ const styles = StyleSheet.create({
   rankedCta: { paddingVertical: 12, alignItems: 'center' },
   rankedText: { fontFamily: fonts.bodyBold, color: COLORS.onBrand, fontSize: 14, letterSpacing: 0.5 },
   ghostWide: { paddingVertical: 11 },
+  helpLink: { paddingVertical: 2, paddingHorizontal: 10 },
+  helpText: { fontFamily: fonts.body, color: COLORS.textFaint, fontSize: 13, textDecorationLine: 'underline' },
   board: {
     backgroundColor: COLORS.board,
     borderRadius: 16,

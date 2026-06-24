@@ -27,6 +27,8 @@ export const EVENTS = {
   skinPurchased: 'skin_purchased',
   skinSelected: 'skin_selected',
   leaderboardOpen: 'leaderboard_open',
+  onboardingShown: 'onboarding_shown',
+  onboardingDone: 'onboarding_done',
   matchmakingStart: 'matchmaking_start',
   matchStart: 'match_start',
   roundEnd: 'round_end',
