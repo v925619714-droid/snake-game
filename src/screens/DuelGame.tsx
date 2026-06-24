@@ -17,9 +17,9 @@ import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
 import { play as playSfx } from '../lib/sound';
 import { shareResult } from '../lib/share';
+import { hLight, hMedium, hSuccess, hError, colorblindOn } from '../lib/settings';
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
-import * as Haptics from 'expo-haptics';
 
 const C = {
   bg: '#0B0F17',
@@ -154,14 +154,12 @@ export default function DuelGame({
       track(EVENTS.matchStart, { mode, role: role ?? 'guest', vs_bot: vsBot });
     }
 
-    const native = Platform.OS !== 'web';
-
     if (prev && prev.status === 'playing' && cur.status === 'playing') {
       const d = cur.roundScore[me] - prev.roundScore[me];
       if (d > 0) {
         track(EVENTS.foodEaten, { mode, color: myColor, correct: true, count: d });
         playSfx('eat');
-        if (native) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        hLight();
       }
       // подобрал буст-еду (ускорение)
       if ((prev.boosts?.[me] ?? 0) === 0 && (cur.boosts?.[me] ?? 0) > 0) playSfx('boost');
@@ -185,18 +183,13 @@ export default function DuelGame({
           rounds: cur.round,
         });
         playSfx(result === 'win' ? 'win' : result === 'loss' ? 'lose' : 'crash');
-        if (native) {
-          if (result === 'win') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          else if (result === 'loss') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-          else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-        }
+        if (result === 'win') hSuccess();
+        else if (result === 'loss') hError();
+        else hMedium();
       } else {
         if (cause) playSfx('crash'); // погиб в промежуточном раунде
-        if (native) {
-          Haptics.impactAsync(
-            outcome === 'win' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light,
-          ).catch(() => {});
-        }
+        if (outcome === 'win') hMedium();
+        else hLight();
       }
     }
   }, [duel, role, vsBot]);
@@ -243,7 +236,7 @@ export default function DuelGame({
   const doTurn = useCallback(
     (dir: Direction) => {
       if (duel?.status !== 'playing') return;
-      if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      hLight();
       turn(dir);
     },
     [duel, turn],
@@ -474,7 +467,7 @@ export default function DuelGame({
                 key={`f-${i}`}
                 style={{ position: 'absolute', left: f.pos.x * cell, top: f.pos.y * cell, width: cell, height: cell, padding: 1, opacity }}
               >
-                <View style={{ flex: 1, borderRadius: f.color === you ? cell / 2 : cell * 0.12, backgroundColor: P[f.color].food, shadowColor: P[f.color].food, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 5 }} />
+                <View style={{ flex: 1, borderRadius: f.color === you ? cell / 2 : (colorblindOn() ? cell * 0.12 : cell / 2), backgroundColor: P[f.color].food, shadowColor: P[f.color].food, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 5 }} />
               </View>
             );
           })}

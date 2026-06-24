@@ -2,13 +2,12 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import {
   Animated,
-  Platform,
   Pressable,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import { hSelect } from '../lib/settings';
 
 const CONFETTI_COLORS = ['#7CF7D4', '#5CC8FF', '#9B6CFF', '#FF8A8A', '#FFE680'];
 
@@ -85,7 +84,7 @@ export function TouchScale({
       disabled={disabled}
       onPressIn={() => {
         to(0.94);
-        if (haptic && Platform.OS !== 'web') Haptics.selectionAsync().catch(() => {});
+        if (haptic) hSelect();
       }}
       onPressOut={() => to(1)}
       onPress={onPress}

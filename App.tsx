@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -45,12 +44,14 @@ import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
 import { type AuthUser, ensureSession } from './src/lib/auth';
 import Account from './src/screens/Account';
 import Onboarding from './src/screens/Onboarding';
+import Settings from './src/screens/Settings';
 import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
 import { fetchProfileById, pushProfile, pushWallet, submitMatch } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
-import { initSound, play as playSfx, isMuted, toggleMuted } from './src/lib/sound';
+import { initSound, play as playSfx } from './src/lib/sound';
 import { shareResult } from './src/lib/share';
+import { initSettings, hLight, hError, hSuccess } from './src/lib/settings';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -103,8 +104,8 @@ function AppInner() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [daily, setDaily] = useState<DailyResult | null>(null);
   const dailyStreakRef = useRef(0);
-  const [muted, setMutedState] = useState(false);
   const [shareNote, setShareNote] = useState('');
+  const [paused, setPaused] = useState(false);
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
@@ -112,7 +113,7 @@ function AppInner() {
         : null,
     [],
   );
-  const [mode, setMode] = useState<'menu' | 'solo' | 'duel' | 'leaderboard' | 'account'>(initialRoom ? 'duel' : 'menu');
+  const [mode, setMode] = useState<'menu' | 'solo' | 'duel' | 'leaderboard' | 'account' | 'settings'>(initialRoom ? 'duel' : 'menu');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [duelRanked, setDuelRanked] = useState(false);
@@ -189,7 +190,8 @@ function AppInner() {
 
   useEffect(() => {
     track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
-    initSound().then(() => setMutedState(isMuted())).catch(() => {});
+    initSettings().catch(() => {});
+    initSound().catch(() => {});
     // Первый запуск (не по инвайт-ссылке) → показать онбординг.
     if (!initialRoom) {
       AsyncStorage.getItem(ONBOARDED_KEY)
@@ -243,19 +245,17 @@ function AppInner() {
   }, []);
 
   useEffect(() => {
-    if (state.status !== 'playing') return;
+    if (state.status !== 'playing' || paused) return;
     const id = setInterval(() => setState((s) => step(s)), speedFor(state.score));
     return () => clearInterval(id);
-  }, [state.status, state.score]);
+  }, [state.status, state.score, paused]);
 
   useEffect(() => {
     const delta = state.score - prevScore.current;
     if (delta > 0) {
       setWallet((w) => addCoins(w, delta));
       playSfx('eat');
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      }
+      hLight();
     }
     prevScore.current = state.score;
   }, [state.score]);
@@ -269,6 +269,7 @@ function AppInner() {
       return next;
     });
     playSfx('crash');
+    hError();
     if (walletLoaded.current) saveWallet(walletRef.current);
     // облачная синхронизация кошелька/рекорда (кросс-девайс)
     const uid = profileRef.current?.id;
@@ -277,22 +278,18 @@ function AppInner() {
       const w = walletRef.current;
       pushWallet(uid, w.coins, w.owned, w.selected, nextBest);
     }
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-    }
   }, [state.status, state.score, saveWallet]);
 
   const handleTurn = useCallback((dir: Direction) => {
     setState((s) => {
       const ns = turn(s, dir);
-      if (ns !== s && ns.status === 'playing' && Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-      }
+      if (ns !== s && ns.status === 'playing') hLight();
       return ns;
     });
   }, []);
 
   const handleStart = useCallback(() => {
+    setPaused(false);
     setState((s) => {
       if (s.status === 'playing') return s;
       track(EVENTS.soloStart, { restart: s.status === 'over' });
@@ -450,7 +447,7 @@ function AppInner() {
     AsyncStorage.setItem(DAILY_KEY, JSON.stringify({ last: dayKey(new Date()), streak: daily.streak })).catch(() => {});
     dailyStreakRef.current = daily.streak;
     track(EVENTS.dailyClaim, { streak: daily.streak, amount: daily.amount, reward_day: daily.rewardDay });
-    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    hSuccess();
     setDaily(null);
   }, [daily, saveWallet]);
 
@@ -477,6 +474,14 @@ function AppInner() {
     return (
       <GestureHandlerRootView style={styles.root}>
         <Leaderboard myId={profile?.id ?? ''} onBack={() => setMode('menu')} />
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (mode === 'settings') {
+    return (
+      <GestureHandlerRootView style={styles.root}>
+        <Settings onBack={() => setMode('menu')} />
       </GestureHandlerRootView>
     );
   }
@@ -541,11 +546,10 @@ function AppInner() {
               </View>
               <TouchScale
                 style={styles.soundChip}
-                haptic={false}
-                onPress={() => setMutedState(toggleMuted())}
-                accessibilityLabel="toggle-sound"
+                onPress={() => setMode('settings')}
+                accessibilityLabel="open-settings"
               >
-                <Text style={styles.soundChipText}>{muted ? '🔇' : '🔊'}</Text>
+                <Text style={styles.soundChipText}>⚙️</Text>
               </TouchScale>
             </View>
 
@@ -718,6 +722,27 @@ function AppInner() {
                         <Text style={styles.shareBtnText}>{shareNote || 'Share score'}</Text>
                       </TouchScale>
                     )}
+                  </FadePop>
+                </View>
+              )}
+
+              {state.status === 'playing' && !paused && (
+                <TouchScale style={styles.pauseBtn} haptic={false} onPress={() => setPaused(true)} accessibilityLabel="pause">
+                  <Text style={styles.pauseBtnText}>⏸</Text>
+                </TouchScale>
+              )}
+
+              {state.status === 'playing' && paused && (
+                <View style={styles.overlay}>
+                  <FadePop style={styles.overlayInner}>
+                    <Text style={styles.overlayTitle}>Paused</Text>
+                    <TouchScale
+                      style={[styles.startBtn, { backgroundColor: skin.body }]}
+                      onPress={() => setPaused(false)}
+                      accessibilityLabel="resume"
+                    >
+                      <Text style={styles.startBtnText}>Resume</Text>
+                    </TouchScale>
                   </FadePop>
                 </View>
               )}
@@ -954,6 +979,8 @@ const styles = StyleSheet.create({
   startBtnText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 18 },
   shareBtn: { paddingVertical: 9, paddingHorizontal: 22, borderRadius: 999, borderWidth: 1, borderColor: COLORS.borderGlass, backgroundColor: COLORS.surface },
   shareBtnText: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
+  pauseBtn: { position: 'absolute', top: 8, right: 8, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(7,10,16,0.55)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.borderGlass },
+  pauseBtnText: { color: COLORS.text, fontSize: 14 },
   hint: { fontFamily: fonts.body, color: COLORS.textFaint, fontSize: 12, letterSpacing: 0.5 },
   dpad: { alignItems: 'center', gap: 10 },
   dpadRow: { flexDirection: 'row', gap: 10 },
