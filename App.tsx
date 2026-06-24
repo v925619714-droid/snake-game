@@ -40,6 +40,7 @@ import {
 import { SKINS, type Skin, getSkin } from './src/game/skins';
 import DuelGame from './src/screens/DuelGame';
 import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
+import { ensureSession } from './src/lib/auth';
 import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
 import { pushProfile } from './src/lib/leaderboard';
@@ -110,15 +111,24 @@ export default function App() {
   useEffect(() => {
     track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
     loadProfile()
-      .then((p) => {
+      .then(async (p) => {
         setProfile(p);
-        pushProfile(p);
-        identify(p.id, {
-          name: p.name,
-          rating: p.rating,
-          wins: p.wins,
-          losses: p.losses,
-          tier: tierFor(p.rating).name,
+        // Фоновая привязка к аккаунту (анонимный вход) — устойчивая identity (uid).
+        // Офлайн-безопасно: без сети ensureSession вернёт null, остаёмся на локальном id.
+        const user = await ensureSession();
+        let fp = p;
+        if (user && user.id !== p.id) {
+          fp = { ...p, id: user.id };
+          await saveProfile(fp);
+          setProfile(fp);
+        }
+        pushProfile(fp);
+        identify(fp.id, {
+          name: fp.name,
+          rating: fp.rating,
+          wins: fp.wins,
+          losses: fp.losses,
+          tier: tierFor(fp.rating).name,
         });
       })
       .catch(() => {});
