@@ -50,6 +50,7 @@ import Leaderboard from './src/screens/Leaderboard';
 import { fetchProfileById, pushProfile, pushWallet, submitMatch } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
 import { initSound, play as playSfx, isMuted, toggleMuted } from './src/lib/sound';
+import { shareResult } from './src/lib/share';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -103,6 +104,7 @@ function AppInner() {
   const [daily, setDaily] = useState<DailyResult | null>(null);
   const dailyStreakRef = useRef(0);
   const [muted, setMutedState] = useState(false);
+  const [shareNote, setShareNote] = useState('');
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
@@ -698,6 +700,24 @@ function AppInner() {
                         {state.status === 'over' ? 'Again' : 'Start'}
                       </Text>
                     </TouchScale>
+                    {state.status === 'over' && (
+                      <TouchScale
+                        style={styles.shareBtn}
+                        onPress={() => {
+                          const sc = state.score;
+                          shareResult(`I scored ${sc} in Chroma Coil 🐍 — can you beat it?`).then((o) => {
+                            track(EVENTS.share, { where: 'solo', score: sc, outcome: o });
+                            if (o === 'copied') {
+                              setShareNote('Link copied!');
+                              setTimeout(() => setShareNote(''), 1500);
+                            }
+                          });
+                        }}
+                        accessibilityLabel="share-score"
+                      >
+                        <Text style={styles.shareBtnText}>{shareNote || 'Share score'}</Text>
+                      </TouchScale>
+                    )}
                   </FadePop>
                 </View>
               )}
@@ -932,6 +952,8 @@ const styles = StyleSheet.create({
   overlaySub: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 16 },
   startBtn: { paddingVertical: 12, paddingHorizontal: 34, borderRadius: 999 },
   startBtnText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 18 },
+  shareBtn: { paddingVertical: 9, paddingHorizontal: 22, borderRadius: 999, borderWidth: 1, borderColor: COLORS.borderGlass, backgroundColor: COLORS.surface },
+  shareBtnText: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
   hint: { fontFamily: fonts.body, color: COLORS.textFaint, fontSize: 12, letterSpacing: 0.5 },
   dpad: { alignItems: 'center', gap: 10 },
   dpadRow: { flexDirection: 'row', gap: 10 },

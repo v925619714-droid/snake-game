@@ -16,6 +16,7 @@ import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
 import { play as playSfx } from '../lib/sound';
+import { shareResult } from '../lib/share';
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import * as Haptics from 'expo-haptics';
@@ -70,6 +71,7 @@ export default function DuelGame({
   const { conn, role, code, duel, oppRating, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
+  const [shareNote, setShareNote] = useState('');
   const [ratingChange, setRatingChange] = useState<RatingChange | null>(null);
   const autoStarted = useRef(false);
   const resultDone = useRef(false);
@@ -525,6 +527,25 @@ export default function DuelGame({
                 ) : (
                   <Text style={styles.overlaySub}>Waiting for host…</Text>
                 )}
+                <TouchScale
+                  style={styles.shareBtn}
+                  onPress={() => {
+                    const won = duel.matchWinner === you;
+                    const msg = won
+                      ? `I won ${duel.matchWins[you]}:${duel.matchWins[opp]} in Chroma Coil ⚡ — challenge me!`
+                      : `I just battled in Chroma Coil ⚡ — can you do better?`;
+                    shareResult(msg).then((o) => {
+                      track(EVENTS.share, { where: 'duel', result: won ? 'win' : 'other', outcome: o });
+                      if (o === 'copied') {
+                        setShareNote('Link copied!');
+                        setTimeout(() => setShareNote(''), 1500);
+                      }
+                    });
+                  }}
+                  accessibilityLabel="share-result"
+                >
+                  <Text style={styles.shareBtnText}>{shareNote || 'Share result'}</Text>
+                </TouchScale>
               </FadePop>
             </View>
           )}
@@ -605,6 +626,8 @@ const styles = StyleSheet.create({
   rankRating: { fontFamily: fonts.num, color: C.text, fontSize: 30 },
   bigBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 36, alignItems: 'center' },
   bigBtnText: { fontFamily: fonts.display, color: '#06180E', fontSize: 17 },
+  shareBtn: { paddingVertical: 9, paddingHorizontal: 22, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: C.board },
+  shareBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 14 },
   altBtn: { backgroundColor: C.board, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', alignItems: 'center' },
   altBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 15 },
   subtle: { color: C.textDim, fontSize: 13 },

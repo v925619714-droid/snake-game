@@ -30,6 +30,7 @@ export const EVENTS = {
   onboardingShown: 'onboarding_shown',
   onboardingDone: 'onboarding_done',
   dailyClaim: 'daily_claim',
+  share: 'share',
   matchmakingStart: 'matchmaking_start',
   matchStart: 'match_start',
   roundEnd: 'round_end',
