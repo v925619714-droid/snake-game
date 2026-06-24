@@ -71,3 +71,18 @@ export async function signOut(): Promise<void> {
     await supabase.auth.signOut();
   } catch {}
 }
+
+// Удалить аккаунт (Apple-требование для приложений с регистрацией): стираем строку
+// профиля (RPC delete_my_account по auth.uid()) и выходим из сессии. Локальные данные
+// чистит вызывающий экран. Полное удаление auth-записи — позже через админ-функцию.
+export async function deleteAccount(): Promise<{ ok: boolean; error?: string }> {
+  if (!hasSupabase) return { ok: false, error: 'offline' };
+  try {
+    const { error } = await supabase.rpc('delete_my_account');
+    if (error) return { ok: false, error: error.message };
+    await supabase.auth.signOut();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}

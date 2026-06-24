@@ -58,6 +58,30 @@ export async function fetchProfileById(id: string): Promise<CloudProfile | null>
   }
 }
 
+// Отправить результат матча на СЕРВЕРНЫЙ ELO (RPC submit_match). Сервер сам берёт
+// хранимый рейтинг игрока, считает дельту (K=32, кламп ±32), применяет кулдаун и пишет
+// в строку auth.uid(). Возвращает авторитетный новый рейтинг (или null — офлайн/no-op).
+export async function submitMatch(
+  result: 'win' | 'loss' | 'draw',
+  oppRating: number,
+  vsBot: boolean,
+): Promise<{ rating: number; delta: number } | null> {
+  if (!hasSupabase) return null;
+  try {
+    const { data, error } = await supabase.rpc('submit_match', {
+      p_result: result,
+      p_opp_rating: Math.round(oppRating) || 1000,
+      p_vs_bot: vsBot,
+    });
+    if (error || !data) return null;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || typeof row.rating !== 'number') return null;
+    return { rating: row.rating, delta: typeof row.delta === 'number' ? row.delta : 0 };
+  } catch {
+    return null;
+  }
+}
+
 // Записать кошелёк/прогресс в облако (через RPC upsert_wallet). best — только вверх.
 export async function pushWallet(
   id: string,

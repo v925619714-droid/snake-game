@@ -37,6 +37,8 @@ export interface RatingChange {
   result: MatchResult;
   newRating: number;
   delta: number;
+  oppRating: number;
+  vsBot: boolean;
 }
 
 function inviteUrl(code: string): string {
@@ -102,10 +104,10 @@ export default function DuelGame({
     const result: MatchResult = duel.matchWinner === you ? 'win' : duel.matchWinner === -1 ? 'draw' : 'loss';
     const opp = typeof oppRating === 'number' ? oppRating : myRating;
     const newRating = applyResult(myRating, opp, result);
-    const change: RatingChange = { result, newRating, delta: newRating - myRating };
+    const change: RatingChange = { result, newRating, delta: newRating - myRating, oppRating: opp, vsBot };
     setRatingChange(change);
     onRatingResult?.(change);
-  }, [ranked, duel, role, oppRating, myRating, onRatingResult]);
+  }, [ranked, duel, role, oppRating, myRating, vsBot, onRatingResult]);
 
   // Действия лобби с разметкой режима для аналитики.
   const onQuick = useCallback(() => {

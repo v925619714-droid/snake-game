@@ -38,6 +38,7 @@ import {
   selectSkin,
 } from './src/game/economy';
 import { SKINS, type Skin, getSkin } from './src/game/skins';
+import { computeDaily, dayKey, type DailyResult } from './src/game/daily';
 import DuelGame from './src/screens/DuelGame';
 import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
 import { type AuthUser, ensureSession } from './src/lib/auth';
@@ -45,7 +46,7 @@ import Account from './src/screens/Account';
 import Onboarding from './src/screens/Onboarding';
 import { tierFor } from './src/game/rating';
 import Leaderboard from './src/screens/Leaderboard';
-import { fetchProfileById, pushProfile, pushWallet } from './src/lib/leaderboard';
+import { fetchProfileById, pushProfile, pushWallet, submitMatch } from './src/lib/leaderboard';
 import { EVENTS, identify, track } from './src/lib/analytics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
@@ -56,6 +57,7 @@ import { TouchScale, FadePop } from './src/ui/anim';
 const BEST_KEY = 'snake:best';
 const WALLET_KEY = 'snake:wallet';
 const ONBOARDED_KEY = 'snake:onboarded';
+const DAILY_KEY = 'snake:daily';
 
 function speedFor(score: number): number {
   return Math.max(70, 160 - score * 4);
@@ -91,6 +93,8 @@ export default function App() {
   const [wallet, setWallet] = useState<Wallet>(initialWallet);
   const [showShop, setShowShop] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [daily, setDaily] = useState<DailyResult | null>(null);
+  const dailyStreakRef = useRef(0);
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
@@ -183,6 +187,23 @@ export default function App() {
         })
         .catch(() => {});
     }
+    // Ежедневная награда: посчитать, доступна ли сегодня.
+    AsyncStorage.getItem(DAILY_KEY)
+      .then((raw) => {
+        let last: string | null = null;
+        let streak = 0;
+        if (raw) {
+          try {
+            const d = JSON.parse(raw);
+            last = typeof d.last === 'string' ? d.last : null;
+            streak = typeof d.streak === 'number' ? d.streak : 0;
+          } catch {}
+        }
+        dailyStreakRef.current = streak;
+        const res = computeDaily(last, streak, new Date());
+        if (res.canClaim) setDaily(res);
+      })
+      .catch(() => {});
     loadProfile()
       .then((p) => {
         setProfile(p); // мгновенный старт на локальном профиле
@@ -324,7 +345,8 @@ export default function App() {
   );
 
   const handleRatingResult = useCallback(
-    (r: { result: 'win' | 'loss' | 'draw'; newRating: number; delta: number }) => {
+    (r: { result: 'win' | 'loss' | 'draw'; newRating: number; delta: number; oppRating: number; vsBot: boolean }) => {
+      // Оптимистично обновляем локально (мгновенный UI), затем сверяем с сервером.
       setProfile((p) => {
         if (!p) return p;
         const np: Profile = {
@@ -339,11 +361,23 @@ export default function App() {
           new_rating: r.newRating,
           delta: r.delta,
           tier: tierFor(r.newRating).name,
+          vs_bot: r.vsBot,
         });
         saveProfile(np);
-        pushProfile(np);
         return np;
       });
+      // Авторитетный рейтинг считает сервер (ELO, кулдаун, анти-чит). Сверяем.
+      submitMatch(r.result, r.oppRating, r.vsBot)
+        .then((s) => {
+          if (!s) return;
+          setProfile((p) => {
+            if (!p || p.rating === s.rating) return p;
+            const np: Profile = { ...p, rating: s.rating };
+            saveProfile(np);
+            return np;
+          });
+        })
+        .catch(() => {});
     },
     [],
   );
@@ -352,6 +386,43 @@ export default function App() {
     setShowOnboarding(false);
     AsyncStorage.setItem(ONBOARDED_KEY, '1').catch(() => {});
   }, []);
+
+  // После удаления аккаунта (T28): стереть локальные данные и начать с чистого гостя.
+  const handleAccountDeleted = useCallback(async () => {
+    try {
+      await Promise.all([
+        AsyncStorage.removeItem('snake:profile'),
+        AsyncStorage.removeItem(WALLET_KEY),
+        AsyncStorage.removeItem(BEST_KEY),
+        AsyncStorage.removeItem(DAILY_KEY),
+      ]);
+    } catch {}
+    reconciledRef.current = false;
+    setWallet(initialWallet());
+    setBest(0);
+    setDaily(null);
+    setAuthUser(null);
+    setMode('solo');
+    try {
+      const fresh = await loadProfile(); // создаст новый локальный профиль
+      setProfile(fresh);
+      applyAccount(fresh); // новый анонимный вход + строка в облаке
+    } catch {}
+  }, [applyAccount]);
+
+  const claimDaily = useCallback(() => {
+    if (!daily || !daily.canClaim) return;
+    const nw = addCoins(walletRef.current, daily.amount);
+    setWallet(nw);
+    saveWallet(nw);
+    const uid = profileRef.current?.id;
+    if (uid) pushWallet(uid, nw.coins, nw.owned, nw.selected, bestRef.current);
+    AsyncStorage.setItem(DAILY_KEY, JSON.stringify({ last: dayKey(new Date()), streak: daily.streak })).catch(() => {});
+    dailyStreakRef.current = daily.streak;
+    track(EVENTS.dailyClaim, { streak: daily.streak, amount: daily.amount, reward_day: daily.rewardDay });
+    if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setDaily(null);
+  }, [daily, saveWallet]);
 
   if (!fontsLoaded) {
     return <View style={styles.boot} />;
@@ -366,6 +437,7 @@ export default function App() {
           onChanged={() => {
             if (profile) applyAccount(profile);
           }}
+          onDeleted={handleAccountDeleted}
         />
       </GestureHandlerRootView>
     );
@@ -414,6 +486,15 @@ export default function App() {
               </Text>
             </TouchScale>
           </View>
+
+          {daily && daily.canClaim && (
+            <TouchScale style={styles.dailyWrap} onPress={claimDaily} accessibilityLabel="daily-claim">
+              <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.dailyBtn}>
+                <Text style={styles.dailyText}>🎁 Daily · Day {daily.streak} · +{daily.amount}</Text>
+                <Text style={styles.dailyClaimText}>Claim</Text>
+              </LinearGradient>
+            </TouchScale>
+          )}
 
           <View style={styles.scoreRow}>
             <View style={styles.scoreBox}>
@@ -688,6 +769,10 @@ const styles = StyleSheet.create({
   subtitle: { fontFamily: fonts.bodyBold, color: COLORS.textFaint, fontSize: 10, letterSpacing: 5 },
   acctChip: { marginTop: 4, backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderGlass, maxWidth: 260 },
   acctText: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 11 },
+  dailyWrap: { width: '100%', maxWidth: 360, borderRadius: 999, overflow: 'hidden', ...elevation.glow },
+  dailyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 18 },
+  dailyText: { fontFamily: fonts.bodyBold, color: COLORS.onAccent, fontSize: 13 },
+  dailyClaimText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 14, letterSpacing: 0.5 },
   scoreRow: { flexDirection: 'row', gap: 12 },
   scoreBox: {
     backgroundColor: COLORS.surface,

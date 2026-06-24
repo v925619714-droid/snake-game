@@ -29,6 +29,7 @@ export const EVENTS = {
   leaderboardOpen: 'leaderboard_open',
   onboardingShown: 'onboarding_shown',
   onboardingDone: 'onboarding_done',
+  dailyClaim: 'daily_claim',
   matchmakingStart: 'matchmaking_start',
   matchStart: 'match_start',
   roundEnd: 'round_end',
