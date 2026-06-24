@@ -39,6 +39,16 @@ import {
 import { SKINS, type Skin, getSkin } from './src/game/skins';
 import { computeDaily, dayKey, type DailyResult } from './src/game/daily';
 import { applyStreak, initialStreak, sanitizeStreak, type StreakState } from './src/game/streak';
+import {
+  applyProgress as questProgress,
+  claimQuest,
+  claimable as questClaimable,
+  claimableCount,
+  loadQuests,
+  questLabel,
+  type Quest,
+  type QuestsState,
+} from './src/game/quests';
 import DuelGame from './src/screens/DuelGame';
 import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
 import { type AuthUser, ensureSession } from './src/lib/auth';
@@ -63,6 +73,7 @@ const WALLET_KEY = 'snake:wallet';
 const ONBOARDED_KEY = 'snake:onboarded';
 const DAILY_KEY = 'snake:daily';
 const STREAK_KEY = 'snake:streak';
+const QUESTS_KEY = 'snake:quests';
 
 function speedFor(score: number): number {
   return Math.max(70, 160 - score * 4);
@@ -113,6 +124,10 @@ function AppInner() {
   const [streak, setStreak] = useState<StreakState>(initialStreak);
   const streakRef = useRef(streak);
   streakRef.current = streak;
+  const [quests, setQuests] = useState<QuestsState | null>(null);
+  const questsRef = useRef(quests);
+  questsRef.current = quests;
+  const [showQuests, setShowQuests] = useState(false);
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
@@ -237,6 +252,17 @@ function AppInner() {
         }
       })
       .catch(() => {});
+    AsyncStorage.getItem(QUESTS_KEY)
+      .then((raw) => {
+        let parsed: unknown = null;
+        try {
+          parsed = raw ? JSON.parse(raw) : null;
+        } catch {}
+        const qs = loadQuests(parsed, dayKey(new Date()));
+        setQuests(qs);
+        AsyncStorage.setItem(QUESTS_KEY, JSON.stringify(qs)).catch(() => {});
+      })
+      .catch(() => {});
     loadProfile()
       .then((p) => {
         setProfile(p); // мгновенный старт на локальном профиле
@@ -299,6 +325,8 @@ function AppInner() {
     }
     playSfx('crash');
     hError();
+    bumpQuest('solo_score', state.score);
+    bumpQuest('eat_solo', state.score);
     if (walletLoaded.current) saveWallet(walletRef.current);
     // облачная синхронизация кошелька/рекорда (кросс-девайс)
     const uid = profileRef.current?.id;
@@ -422,6 +450,9 @@ function AppInner() {
         vs_bot: r.vsBot,
       });
       saveProfile(np);
+      // прогресс дейли-квестов (ranked)
+      bumpQuest('play_ranked', 1);
+      if (r.result === 'win') bumpQuest('win_ranked', 1);
       // серия побед + бонус-монеты на вехах
       const sr = applyStreak(streakRef.current, r.result);
       setStreak(sr.state);
@@ -490,6 +521,37 @@ function AppInner() {
     hSuccess();
     setDaily(null);
   }, [daily, saveWallet]);
+
+  // Прогресс дейли-квеста (count/max по типу). Пишем в AsyncStorage только при изменении.
+  const bumpQuest = useCallback((type: string, amount: number) => {
+    const cur = questsRef.current;
+    if (!cur) return;
+    const items = questProgress(cur.items, type, amount);
+    if (!items.some((q, i) => q !== cur.items[i])) return;
+    const ns = { ...cur, items };
+    setQuests(ns);
+    AsyncStorage.setItem(QUESTS_KEY, JSON.stringify(ns)).catch(() => {});
+  }, []);
+
+  const claimQuestReward = useCallback(
+    (type: string) => {
+      const cur = questsRef.current;
+      if (!cur) return;
+      const { items, reward } = claimQuest(cur.items, type);
+      if (reward <= 0) return;
+      const ns = { ...cur, items };
+      setQuests(ns);
+      AsyncStorage.setItem(QUESTS_KEY, JSON.stringify(ns)).catch(() => {});
+      const nw = addCoins(walletRef.current, reward);
+      setWallet(nw);
+      saveWallet(nw);
+      const uid = profileRef.current?.id;
+      if (uid) pushWallet(uid, nw.coins, nw.owned, nw.selected, bestRef.current);
+      track(EVENTS.questClaim, { quest: type, reward });
+      hSuccess();
+    },
+    [saveWallet],
+  );
 
   if (!fontsLoaded) {
     return <View style={styles.boot} />;
@@ -652,6 +714,12 @@ function AppInner() {
               </TouchScale>
             </View>
 
+            <TouchScale style={[styles.ghostBtn, styles.wide, styles.ghostWide]} onPress={() => setShowQuests(true)} accessibilityLabel="quests">
+              <Text style={styles.ghostText}>
+                🎯 Daily quests{quests && claimableCount(quests.items) > 0 ? `  •${claimableCount(quests.items)}` : ''}
+              </Text>
+            </TouchScale>
+
             <TouchScale style={styles.helpLink} onPress={() => setShowOnboarding(true)} accessibilityLabel="how-to-play">
               <Text style={styles.helpText}>How to play</Text>
             </TouchScale>
@@ -659,6 +727,9 @@ function AppInner() {
 
           {showShop && (
             <ShopOverlay wallet={wallet} onBuy={handleBuy} onSelect={handleSelect} onClose={() => setShowShop(false)} />
+          )}
+          {showQuests && quests && (
+            <QuestsOverlay items={quests.items} onClaim={claimQuestReward} onClose={() => setShowQuests(false)} />
           )}
           {showOnboarding && <Onboarding onDone={finishOnboarding} />}
         </LinearGradient>
@@ -910,6 +981,61 @@ function ShopOverlay({
   );
 }
 
+function QuestsOverlay({
+  items,
+  onClaim,
+  onClose,
+}: {
+  items: Quest[];
+  onClaim: (type: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <View style={styles.shopOverlay}>
+      <View style={styles.shopCard}>
+        <View style={styles.shopHeader}>
+          <Text style={styles.shopTitle}>Daily quests</Text>
+        </View>
+        <View style={{ gap: 10 }}>
+          {items.map((q) => {
+            const pct = Math.min(1, q.progress / q.target);
+            const can = questClaimable(q);
+            return (
+              <View key={q.type} style={styles.questRow}>
+                <View style={{ flex: 1, gap: 6 }}>
+                  <Text style={styles.questLabel}>{questLabel(q)}</Text>
+                  <View style={styles.questBar}>
+                    <View style={[styles.questBarFill, { width: `${pct * 100}%` }]} />
+                  </View>
+                  <Text style={styles.questMeta}>
+                    {Math.min(q.progress, q.target)}/{q.target} · +{q.reward}
+                  </Text>
+                </View>
+                {q.claimed ? (
+                  <View style={[styles.skinBtn, styles.skinBtnActive]}>
+                    <Text style={styles.skinBtnActiveText}>Done</Text>
+                  </View>
+                ) : (
+                  <TouchScale
+                    style={[styles.skinBtn, !can && styles.skinBtnDisabled]}
+                    onPress={() => can && onClaim(q.type)}
+                    accessibilityLabel={`claim-${q.type}`}
+                  >
+                    <Text style={[styles.skinBtnText, !can && styles.skinBtnDisabledText]}>Claim</Text>
+                  </TouchScale>
+                )}
+              </View>
+            );
+          })}
+        </View>
+        <TouchScale style={styles.closeBtn} onPress={onClose} accessibilityLabel="quests-close">
+          <Text style={styles.closeBtnText}>Close</Text>
+        </TouchScale>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   bg: { flex: 1 },
@@ -1079,6 +1205,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderGlass,
   },
+  questRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: COLORS.surface, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: COLORS.borderGlass },
+  questLabel: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
+  questBar: { height: 6, borderRadius: 3, backgroundColor: COLORS.surfaceHi, overflow: 'hidden' },
+  questBarFill: { height: 6, borderRadius: 3, backgroundColor: COLORS.brand1 },
+  questMeta: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 11 },
   skinSwatch: { flexDirection: 'row', gap: 3 },
   swatchCell: { width: 18, height: 18, borderRadius: 6 },
   skinName: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 16 },

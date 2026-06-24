@@ -34,6 +34,7 @@ export const EVENTS = {
   dailyClaim: 'daily_claim',
   share: 'share',
   winStreak: 'win_streak',
+  questClaim: 'quest_claim',
   matchmakingStart: 'matchmaking_start',
   matchStart: 'match_start',
   roundEnd: 'round_end',
