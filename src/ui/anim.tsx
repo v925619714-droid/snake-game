@@ -12,6 +12,10 @@ import * as Haptics from 'expo-haptics';
 
 const CONFETTI_COLORS = ['#7CF7D4', '#5CC8FF', '#9B6CFF', '#FF8A8A', '#FFE680'];
 
+// Pressable как анимируемый компонент — чтобы layout-стиль (width/alignSelf и т.п.)
+// и scale-трансформ были на ОДНОМ элементе, участвующем в раскладке.
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 // Разовая вспышка конфетти (на победе). pointerEvents none — не мешает кнопкам.
 export function Confetti({ count = 22 }: { count?: number }) {
   const parts = useMemo(
@@ -76,7 +80,7 @@ export function TouchScale({
   const to = (v: number) =>
     Animated.spring(scale, { toValue: v, useNativeDriver: true, speed: 40, bounciness: 0 }).start();
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityLabel={accessibilityLabel}
       disabled={disabled}
       onPressIn={() => {
@@ -85,11 +89,10 @@ export function TouchScale({
       }}
       onPressOut={() => to(1)}
       onPress={onPress}
+      style={[style, { transform: [{ scale }] }, disabled ? { opacity: 0.4 } : null]}
     >
-      <Animated.View style={[style, { transform: [{ scale }] }, disabled ? { opacity: 0.4 } : null]}>
-        {children}
-      </Animated.View>
-    </Pressable>
+      {children}
+    </AnimatedPressable>
   );
 }
 

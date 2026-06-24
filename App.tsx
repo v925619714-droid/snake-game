@@ -17,6 +17,7 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BOARD,
   type Direction,
@@ -63,9 +64,14 @@ function speedFor(score: number): number {
   return Math.max(70, 160 - score * 4);
 }
 
-export default function App() {
+function AppInner() {
   const { width, height } = useWindowDimensions();
-  const boardPx = Math.max(176, Math.floor(Math.min(width - 32, height - 408, 348)));
+  const insets = useSafeAreaInsets();
+  // Поле соло-экрана: подгоняется под устройство (учёт safe area), чтобы D-pad и хинт влезали.
+  const boardPx = Math.max(
+    176,
+    Math.floor(Math.min(width - 32, height - insets.top - insets.bottom - 300, 360)),
+  );
   const cell = boardPx / BOARD;
 
   const [fontsLoaded] = useFonts({
@@ -102,7 +108,7 @@ export default function App() {
         : null,
     [],
   );
-  const [mode, setMode] = useState<'solo' | 'duel' | 'leaderboard' | 'account'>(initialRoom ? 'duel' : 'solo');
+  const [mode, setMode] = useState<'menu' | 'solo' | 'duel' | 'leaderboard' | 'account'>(initialRoom ? 'duel' : 'menu');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [duelRanked, setDuelRanked] = useState(false);
@@ -270,7 +276,13 @@ export default function App() {
   }, [state.status, state.score, saveWallet]);
 
   const handleTurn = useCallback((dir: Direction) => {
-    setState((s) => turn(s, dir));
+    setState((s) => {
+      const ns = turn(s, dir);
+      if (ns !== s && ns.status === 'playing' && Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }
+      return ns;
+    });
   }, []);
 
   const handleStart = useCallback(() => {
@@ -288,6 +300,7 @@ export default function App() {
       w: 'up', s: 'down', a: 'left', d: 'right',
     };
     const onKey = (e: KeyboardEvent) => {
+      if (mode !== 'solo') return; // клавиши только на соло-экране
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
         handleStart();
@@ -301,16 +314,26 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handleTurn, handleStart]);
+  }, [handleTurn, handleStart, mode]);
 
-  const swipe = useMemo(
-    () =>
-      Gesture.Pan().onEnd((e) => {
+  // Свайп с ранним коммитом: поворачиваем, как только жест пересёк порог (а не на отпускании) —
+  // заметно меньше задержка. Один поворот за жест (до отпускания пальца).
+  const swipe = useMemo(() => {
+    let committed = false;
+    return Gesture.Pan()
+      .onBegin(() => {
+        committed = false;
+      })
+      .onUpdate((e) => {
+        if (committed) return;
+        if (Math.abs(e.translationX) + Math.abs(e.translationY) < 12) return;
         const dir = swipeToDirection(e.translationX, e.translationY);
-        if (dir) handleTurn(dir);
-      }),
-    [handleTurn],
-  );
+        if (dir) {
+          committed = true;
+          handleTurn(dir);
+        }
+      });
+  }, [handleTurn]);
 
   const openShop = useCallback(() => {
     if (walletLoaded.current) saveWallet(walletRef.current);
@@ -433,7 +456,7 @@ export default function App() {
       <GestureHandlerRootView style={styles.root}>
         <Account
           user={authUser}
-          onBack={() => setMode('solo')}
+          onBack={() => setMode('menu')}
           onChanged={() => {
             if (profile) applyAccount(profile);
           }}
@@ -446,7 +469,7 @@ export default function App() {
   if (mode === 'leaderboard') {
     return (
       <GestureHandlerRootView style={styles.root}>
-        <Leaderboard myId={profile?.id ?? ''} onBack={() => setMode('solo')} />
+        <Leaderboard myId={profile?.id ?? ''} onBack={() => setMode('menu')} />
       </GestureHandlerRootView>
     );
   }
@@ -455,7 +478,7 @@ export default function App() {
     return (
       <GestureHandlerRootView style={styles.root}>
         <DuelGame
-          onExit={() => setMode('solo')}
+          onExit={() => setMode('menu')}
           autoJoin={duelRanked ? null : initialRoom}
           ranked={duelRanked}
           myRating={profile?.rating ?? 1000}
@@ -467,60 +490,58 @@ export default function App() {
 
   const tier = tierFor(profile?.rating ?? 1000);
 
-  return (
-    <GestureHandlerRootView style={styles.root}>
-      <LinearGradient colors={gradients.vignette} style={styles.bg}>
-        <View style={styles.container}>
+  // ── MENU (главное меню, без игрового поля; прокручивается → ничего не обрезается) ──
+  if (mode === 'menu') {
+    return (
+      <GestureHandlerRootView style={styles.root}>
+        <LinearGradient colors={gradients.vignette} style={styles.bg}>
           <StatusBar style="light" />
-
-          <View style={styles.header}>
-            <Text style={styles.title}>
-              <Text style={{ color: COLORS.brand1 }}>CHROMA</Text>
-              <Text style={{ color: COLORS.text }}> </Text>
-              <Text style={{ color: COLORS.brand3 }}>COIL</Text>
-            </Text>
-            <Text style={styles.subtitle}>COLOR DUEL ARENA</Text>
-            <TouchScale style={styles.acctChip} onPress={() => setMode('account')} accessibilityLabel="account">
-              <Text style={styles.acctText} numberOfLines={1}>
-                {authUser && !authUser.isAnon && authUser.email ? authUser.email : 'Guest · sign in to sync'}
+          <ScrollView
+            contentContainerStyle={[styles.menuScroll, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 24 }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.header}>
+              <Text style={styles.title}>
+                <Text style={{ color: COLORS.brand1 }}>CHROMA</Text>
+                <Text style={{ color: COLORS.text }}> </Text>
+                <Text style={{ color: COLORS.brand3 }}>COIL</Text>
               </Text>
-            </TouchScale>
-          </View>
+              <Text style={styles.subtitle}>COLOR DUEL ARENA</Text>
+              <TouchScale style={styles.acctChip} onPress={() => setMode('account')} accessibilityLabel="account">
+                <Text style={styles.acctText} numberOfLines={1}>
+                  {authUser && !authUser.isAnon && authUser.email ? authUser.email : 'Guest · sign in to sync'}
+                </Text>
+              </TouchScale>
+            </View>
 
-          {daily && daily.canClaim && (
-            <TouchScale style={styles.dailyWrap} onPress={claimDaily} accessibilityLabel="daily-claim">
-              <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.dailyBtn}>
-                <Text style={styles.dailyText}>🎁 Daily · Day {daily.streak} · +{daily.amount}</Text>
-                <Text style={styles.dailyClaimText}>Claim</Text>
+            {daily && daily.canClaim && (
+              <TouchScale style={[styles.dailyWrap, styles.wide]} onPress={claimDaily} accessibilityLabel="daily-claim">
+                <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.dailyBtn}>
+                  <Text style={styles.dailyText}>🎁 Daily · Day {daily.streak} · +{daily.amount}</Text>
+                  <Text style={styles.dailyClaimText}>Claim</Text>
+                </LinearGradient>
+              </TouchScale>
+            )}
+
+            <View style={styles.statRow}>
+              <View style={styles.coinPill}>
+                <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.coinDot} />
+                <Text style={styles.coinText} accessibilityLabel={`coins-${wallet.coins}`}>{wallet.coins}</Text>
+              </View>
+              <View style={styles.bestPill}>
+                <Text style={styles.bestPillLabel}>BEST</Text>
+                <Text style={styles.bestPillVal}>{best}</Text>
+              </View>
+            </View>
+
+            <TouchScale style={[styles.ctaWrap, styles.wide]} onPress={() => setMode('solo')} accessibilityLabel="play-solo">
+              <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.menuCta}>
+                <Text style={styles.menuCtaText}>Play</Text>
               </LinearGradient>
             </TouchScale>
-          )}
 
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreBox}>
-              <Text style={styles.scoreLabel}>SCORE</Text>
-              <Text style={styles.scoreValue} accessibilityLabel={`score-${state.score}`}>
-                {state.score}
-              </Text>
-            </View>
-            <View style={styles.scoreBox}>
-              <Text style={styles.scoreLabel}>BEST</Text>
-              <Text style={[styles.scoreValue, styles.scoreBest]}>{best}</Text>
-            </View>
-          </View>
-
-          <View style={styles.coinRow}>
-            <View style={styles.coinPill}>
-              <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.coinDot} />
-              <Text style={styles.coinText} accessibilityLabel={`coins-${wallet.coins}`}>
-                {wallet.coins}
-              </Text>
-            </View>
-            <TouchScale style={styles.ghostBtn} onPress={openShop} accessibilityLabel="shop">
-              <Text style={styles.ghostText}>Shop</Text>
-            </TouchScale>
             <TouchScale
-              style={styles.ctaWrap}
+              style={[styles.ctaWrap, styles.wide]}
               onPress={() => {
                 track(EVENTS.matchmakingStart, { mode: 'versus' });
                 setDuelRanked(false);
@@ -528,46 +549,81 @@ export default function App() {
               }}
               accessibilityLabel="versus"
             >
-              <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cta}>
-                <Text style={styles.ctaText}>Versus</Text>
+              <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.menuCta}>
+                <Text style={styles.menuCtaText}>Versus</Text>
               </LinearGradient>
             </TouchScale>
-          </View>
 
-          <TouchScale
-            style={[styles.ctaWrap, styles.wide]}
-            onPress={() => {
-              track(EVENTS.matchmakingStart, { mode: 'ranked', rating: profile?.rating ?? 1000 });
-              setDuelRanked(true);
-              setMode('duel');
-            }}
-            accessibilityLabel="ranked"
-          >
-            <LinearGradient colors={gradients.ranked} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.rankedCta}>
-              <Text style={styles.rankedText}>
-                Ranked · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tier.name}</Text> {profile?.rating ?? 1000}
+            <TouchScale
+              style={[styles.ctaWrap, styles.wide]}
+              onPress={() => {
+                track(EVENTS.matchmakingStart, { mode: 'ranked', rating: profile?.rating ?? 1000 });
+                setDuelRanked(true);
+                setMode('duel');
+              }}
+              accessibilityLabel="ranked"
+            >
+              <LinearGradient colors={gradients.ranked} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.rankedCta}>
+                <Text style={styles.rankedText}>
+                  Ranked · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tier.name}</Text> {profile?.rating ?? 1000}
+                </Text>
+              </LinearGradient>
+            </TouchScale>
+
+            <View style={[styles.menuGhostRow, styles.wide]}>
+              <TouchScale style={[styles.ghostBtn, styles.ghostHalf]} onPress={openShop} accessibilityLabel="shop">
+                <Text style={styles.ghostText}>Shop</Text>
+              </TouchScale>
+              <TouchScale
+                style={[styles.ghostBtn, styles.ghostHalf]}
+                onPress={() => {
+                  track(EVENTS.leaderboardOpen);
+                  setMode('leaderboard');
+                }}
+                accessibilityLabel="leaderboard"
+              >
+                <Text style={styles.ghostText}>Leaderboard</Text>
+              </TouchScale>
+            </View>
+
+            <TouchScale style={styles.helpLink} onPress={() => setShowOnboarding(true)} accessibilityLabel="how-to-play">
+              <Text style={styles.helpText}>How to play</Text>
+            </TouchScale>
+          </ScrollView>
+
+          {showShop && (
+            <ShopOverlay wallet={wallet} onBuy={handleBuy} onSelect={handleSelect} onClose={() => setShowShop(false)} />
+          )}
+          {showOnboarding && <Onboarding onDone={finishOnboarding} />}
+        </LinearGradient>
+      </GestureHandlerRootView>
+    );
+  }
+
+  // ── SOLO (фокус-экран игры: только счёт, поле, хинт, D-pad; safe-area) ──
+  return (
+    <GestureHandlerRootView style={styles.root}>
+      <LinearGradient colors={gradients.vignette} style={styles.bg}>
+        <View style={[styles.soloContainer, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
+          <StatusBar style="light" />
+
+          <View style={styles.soloTop}>
+            <TouchScale style={styles.backChip} onPress={() => setMode('menu')} accessibilityLabel="solo-back">
+              <Text style={styles.backChipText}>‹ Menu</Text>
+            </TouchScale>
+            <View style={styles.soloScores}>
+              <Text style={styles.soloScoreText}>
+                SCORE <Text style={styles.soloScoreVal} accessibilityLabel={`score-${state.score}`}>{state.score}</Text>
               </Text>
-            </LinearGradient>
-          </TouchScale>
-
-          <TouchScale
-            style={[styles.ghostBtn, styles.wide, styles.ghostWide]}
-            onPress={() => {
-              track(EVENTS.leaderboardOpen);
-              setMode('leaderboard');
-            }}
-            accessibilityLabel="leaderboard"
-          >
-            <Text style={styles.ghostText}>Leaderboard</Text>
-          </TouchScale>
-
-          <TouchScale
-            style={styles.helpLink}
-            onPress={() => setShowOnboarding(true)}
-            accessibilityLabel="how-to-play"
-          >
-            <Text style={styles.helpText}>How to play</Text>
-          </TouchScale>
+              <Text style={styles.soloScoreText}>
+                BEST <Text style={[styles.soloScoreVal, styles.scoreBest]}>{best}</Text>
+              </Text>
+            </View>
+            <View style={styles.coinPill}>
+              <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.coinDot} />
+              <Text style={styles.coinText}>{wallet.coins}</Text>
+            </View>
+          </View>
 
           <GestureDetector gesture={swipe}>
             <View style={[styles.board, { width: boardPx, height: boardPx }]}>
@@ -635,29 +691,28 @@ export default function App() {
           </View>
         </GestureDetector>
 
-        <Text style={styles.hint}>Swipe or arrows · space to start</Text>
+          <Text style={styles.hint}>Swipe anywhere or use the D-pad</Text>
 
-        <View style={styles.dpad}>
-          <DirButton label="▲" dir="up" onPress={handleTurn} />
-          <View style={styles.dpadRow}>
-            <DirButton label="◀" dir="left" onPress={handleTurn} />
-            <DirButton label="▼" dir="down" onPress={handleTurn} />
-            <DirButton label="▶" dir="right" onPress={handleTurn} />
+          <View style={styles.dpad}>
+            <DirButton label="▲" dir="up" onPress={handleTurn} />
+            <View style={styles.dpadRow}>
+              <DirButton label="◀" dir="left" onPress={handleTurn} />
+              <DirButton label="▼" dir="down" onPress={handleTurn} />
+              <DirButton label="▶" dir="right" onPress={handleTurn} />
+            </View>
           </View>
-        </View>
-
-          {showShop && (
-            <ShopOverlay
-              wallet={wallet}
-              onBuy={handleBuy}
-              onSelect={handleSelect}
-              onClose={() => setShowShop(false)}
-            />
-          )}
         </View>
         {showOnboarding && <Onboarding onDone={finishOnboarding} />}
       </LinearGradient>
     </GestureHandlerRootView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppInner />
+    </SafeAreaProvider>
   );
 }
 
@@ -764,6 +819,23 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     gap: 10,
   },
+  // Меню (прокручиваемое) и соло-экран (фиксированный, под swipe).
+  menuScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 16 },
+  soloContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 16 },
+  soloTop: { width: '100%', maxWidth: 420, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
+  backChip: { backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.borderGlass },
+  backChipText: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
+  soloScores: { flexDirection: 'row', gap: 14, alignItems: 'center' },
+  soloScoreText: { fontFamily: fonts.bodyBold, color: COLORS.textDim, fontSize: 11, letterSpacing: 1 },
+  soloScoreVal: { fontFamily: fonts.num, color: COLORS.text, fontSize: 18 },
+  statRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  bestPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.borderGlass },
+  bestPillLabel: { fontFamily: fonts.bodyBold, color: COLORS.textDim, fontSize: 10, letterSpacing: 2 },
+  bestPillVal: { fontFamily: fonts.num, color: COLORS.brand1, fontSize: 16 },
+  menuCta: { paddingVertical: 14, alignItems: 'center' },
+  menuCtaText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 17, letterSpacing: 0.5 },
+  menuGhostRow: { flexDirection: 'row', gap: 10 },
+  ghostHalf: { flex: 1 },
   header: { alignItems: 'center', gap: 3 },
   title: { fontFamily: fonts.display, fontSize: 30, letterSpacing: 3 },
   subtitle: { fontFamily: fonts.bodyBold, color: COLORS.textFaint, fontSize: 10, letterSpacing: 5 },

@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DUEL_BOARD } from '../game/duel';
 import { type Direction, swipeToDirection } from '../game/logic';
 import { type MatchResult, applyResult, tierFor } from '../game/rating';
@@ -60,7 +61,9 @@ export default function DuelGame({
   onRatingResult?: (r: RatingChange) => void;
 }) {
   const { width, height } = useWindowDimensions();
-  const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - 320, 420)));
+  const insets = useSafeAreaInsets();
+  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
+  const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - insets.top - insets.bottom - 300, 420)));
   const cell = boardPx / DUEL_BOARD;
 
   const { conn, role, code, duel, oppRating, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
@@ -226,21 +229,40 @@ export default function DuelGame({
     return () => window.removeEventListener('keydown', onKey);
   }, [duel, role, conn, turn, startGame, ranked]);
 
-  const swipe = useMemo(
-    () =>
-      Gesture.Pan().onEnd((e) => {
-        const dir = swipeToDirection(e.translationX, e.translationY);
-        if (dir && duel?.status === 'playing') turn(dir);
-      }),
+  // Поворот + тактильный отклик (только во время раунда).
+  const doTurn = useCallback(
+    (dir: Direction) => {
+      if (duel?.status !== 'playing') return;
+      if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      turn(dir);
+    },
     [duel, turn],
   );
+
+  // Свайп с ранним коммитом (меньше задержка): поворот при пересечении порога, один на жест.
+  const swipe = useMemo(() => {
+    let committed = false;
+    return Gesture.Pan()
+      .onBegin(() => {
+        committed = false;
+      })
+      .onUpdate((e) => {
+        if (committed) return;
+        if (Math.abs(e.translationX) + Math.abs(e.translationY) < 12) return;
+        const dir = swipeToDirection(e.translationX, e.translationY);
+        if (dir) {
+          committed = true;
+          doTurn(dir);
+        }
+      });
+  }, [doTurn]);
 
   const tier = tierFor(myRating);
 
   // ── LOBBY ──
   if (!duel) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, pad]}>
         <Text style={styles.title}>{ranked ? 'Ranked' : 'Color Duel'}</Text>
 
         {ranked && (conn === 'idle' || conn === 'searching' || conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
@@ -344,7 +366,7 @@ export default function DuelGame({
   const mine = P[you];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, pad]}>
       <View style={styles.hud}>
         <ScoreChip
           label="You"
@@ -442,7 +464,7 @@ export default function DuelGame({
                 key={`f-${i}`}
                 style={{ position: 'absolute', left: f.pos.x * cell, top: f.pos.y * cell, width: cell, height: cell, padding: 1, opacity }}
               >
-                <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: P[f.color].food, shadowColor: P[f.color].food, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 5 }} />
+                <View style={{ flex: 1, borderRadius: f.color === you ? cell / 2 : cell * 0.12, backgroundColor: P[f.color].food, shadowColor: P[f.color].food, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 5 }} />
               </View>
             );
           })}
@@ -502,11 +524,11 @@ export default function DuelGame({
       </GestureDetector>
 
       <View style={styles.dpad}>
-        <DirButton label="▲" dir="up" onPress={turn} />
+        <DirButton label="▲" dir="up" onPress={doTurn} />
         <View style={styles.dpadRow}>
-          <DirButton label="◀" dir="left" onPress={turn} />
-          <DirButton label="▼" dir="down" onPress={turn} />
-          <DirButton label="▶" dir="right" onPress={turn} />
+          <DirButton label="◀" dir="left" onPress={doTurn} />
+          <DirButton label="▼" dir="down" onPress={doTurn} />
+          <DirButton label="▶" dir="right" onPress={doTurn} />
         </View>
       </View>
 
