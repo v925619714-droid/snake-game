@@ -371,7 +371,7 @@ function AppInner() {
   );
 
   const handleRatingResult = useCallback(
-    (r: { result: 'win' | 'loss' | 'draw'; newRating: number; delta: number; oppRating: number; vsBot: boolean }) => {
+    (r: { result: 'win' | 'loss' | 'draw'; newRating: number; delta: number; oppRating: number; vsBot: boolean; oppId: string | null }) => {
       // Оптимистично обновляем локально (мгновенный UI), затем сверяем с сервером.
       setProfile((p) => {
         if (!p) return p;
@@ -393,7 +393,7 @@ function AppInner() {
         return np;
       });
       // Авторитетный рейтинг считает сервер (ELO, кулдаун, анти-чит). Сверяем.
-      submitMatch(r.result, r.oppRating, r.vsBot)
+      submitMatch(r.result, r.oppRating, r.vsBot, r.oppId)
         .then((s) => {
           if (!s) return;
           setProfile((p) => {
@@ -493,6 +493,7 @@ function AppInner() {
           autoJoin={duelRanked ? null : initialRoom}
           ranked={duelRanked}
           myRating={profile?.rating ?? 1000}
+          myId={profile?.id ?? ''}
           onRatingResult={handleRatingResult}
         />
       </GestureHandlerRootView>

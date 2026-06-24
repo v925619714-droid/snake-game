@@ -65,6 +65,7 @@ export async function submitMatch(
   result: 'win' | 'loss' | 'draw',
   oppRating: number,
   vsBot: boolean,
+  oppId?: string | null,
 ): Promise<{ rating: number; delta: number } | null> {
   if (!hasSupabase) return null;
   try {
@@ -72,6 +73,7 @@ export async function submitMatch(
       p_result: result,
       p_opp_rating: Math.round(oppRating) || 1000,
       p_vs_bot: vsBot,
+      p_opponent: oppId ?? null,
     });
     if (error || !data) return null;
     const row = Array.isArray(data) ? data[0] : data;

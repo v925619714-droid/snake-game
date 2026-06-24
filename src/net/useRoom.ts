@@ -48,6 +48,7 @@ export function useRoom() {
   const [code, setCode] = useState('');
   const [duel, setDuel] = useState<DuelState | null>(null);
   const [oppRating, setOppRating] = useState<number | null>(null);
+  const [oppId, setOppId] = useState<string | null>(null); // auth.uid() соперника (для серверного анти-чита)
   const [vsBot, setVsBot] = useState(false);
   // Соперник покинул матч (мы победили форфейтом) / наш канал потерял связь во время матча.
   const [oppLeft, setOppLeft] = useState(false);
@@ -344,6 +345,7 @@ export function useRoom() {
       setRole('host');
       const r = Math.max(100, Math.round(myRating + (Math.random() * 100 - 50)));
       setOppRating(r);
+      setOppId(null); // бот — без uid, серверный рейтинг по клиентскому oppRating (в рамках)
       const init = duelNewMatch();
       apply(init);
       setConn('ready');
@@ -414,7 +416,7 @@ export function useRoom() {
   // Ranked-матч: подбор по ближайшему рейтингу + обмен рейтингами.
   // Если за BOT_FALLBACK_MS живой соперник не нашёлся — подставляем бота.
   const rankedMatch = useCallback(
-    (myRating: number) => {
+    (myRating: number, myUid: string) => {
       matchedRef.current = false;
       rankedRef.current = true;
       myRatingRef.current = myRating;
@@ -422,6 +424,7 @@ export function useRoom() {
       setConn('searching');
       setRole(null);
       setOppRating(null);
+      setOppId(null);
       setVsBot(false);
       botRef.current = false;
       const mm = supabase.channel('mm-ranked', { config: { presence: { key: myId } } });
@@ -433,13 +436,14 @@ export function useRoom() {
           matchedRef.current = true;
           clearBotTimer();
           setOppRating(typeof payload.hostRating === 'number' ? payload.hostRating : null);
+          setOppId(typeof payload.hostUid === 'string' ? payload.hostUid : null);
           cleanupMM();
           connect('guest', payload.room as string, true);
         }
       });
       mm.on('presence', { event: 'sync' }, () => {
         if (matchedRef.current) return;
-        const st = mm.presenceState() as Record<string, Array<{ rating?: number }>>;
+        const st = mm.presenceState() as Record<string, Array<{ rating?: number; uid?: string }>>;
         const ids = Object.keys(st).sort();
         if (ids.length >= 2 && ids[0] === myId) {
           const others = ids.slice(1);
@@ -456,15 +460,16 @@ export function useRoom() {
           matchedRef.current = true;
           clearBotTimer();
           setOppRating(st[guest]?.[0]?.rating ?? null);
+          setOppId(st[guest]?.[0]?.uid ?? null);
           const room = randomCode();
-          mm.send({ type: 'broadcast', event: 'match', payload: { host: myId, guest, room, hostRating: myRating } });
+          mm.send({ type: 'broadcast', event: 'match', payload: { host: myId, guest, room, hostRating: myRating, hostUid: myUid } });
           cleanupMM();
           connect('host', room, true);
         }
       });
       mm.subscribe((s) => {
         if (s === 'SUBSCRIBED') {
-          mm.track({ id: myId, rating: myRating, t: Date.now() });
+          mm.track({ id: myId, rating: myRating, uid: myUid, t: Date.now() });
         } else if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT' || s === 'CLOSED') {
           if (matchedRef.current) return;
           matchedRef.current = true;
@@ -515,6 +520,7 @@ export function useRoom() {
     setOppLeft(false);
     setNetError(false);
     setOppRating(null);
+    setOppId(null);
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -541,5 +547,5 @@ export function useRoom() {
     [stopLoop],
   );
 
-  return { conn, role, code, duel, oppRating, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave };
+  return { conn, role, code, duel, oppRating, oppId, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave };
 }

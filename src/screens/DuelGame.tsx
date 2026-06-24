@@ -41,6 +41,7 @@ export interface RatingChange {
   delta: number;
   oppRating: number;
   vsBot: boolean;
+  oppId: string | null;
 }
 
 function inviteUrl(code: string): string {
@@ -53,12 +54,14 @@ export default function DuelGame({
   autoJoin,
   ranked = false,
   myRating = 1000,
+  myId = '',
   onRatingResult,
 }: {
   onExit: () => void;
   autoJoin?: string | null;
   ranked?: boolean;
   myRating?: number;
+  myId?: string;
   onRatingResult?: (r: RatingChange) => void;
 }) {
   const { width, height } = useWindowDimensions();
@@ -67,7 +70,7 @@ export default function DuelGame({
   const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - insets.top - insets.bottom - 300, 420)));
   const cell = boardPx / DUEL_BOARD;
 
-  const { conn, role, code, duel, oppRating, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
+  const { conn, role, code, duel, oppRating, oppId, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [shareNote, setShareNote] = useState('');
@@ -84,7 +87,7 @@ export default function DuelGame({
     if (autoStarted.current || conn !== 'idle') return;
     if (ranked) {
       autoStarted.current = true;
-      rankedMatch(myRating);
+      rankedMatch(myRating, myId);
     } else if (autoJoin) {
       autoStarted.current = true;
       modeRef.current = 'friend';
@@ -94,7 +97,7 @@ export default function DuelGame({
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
-  }, [ranked, autoJoin, conn, rankedMatch, joinRoom, myRating]);
+  }, [ranked, autoJoin, conn, rankedMatch, joinRoom, myRating, myId]);
 
   // Ranked: хост авто-стартует, когда соперник найден.
   useEffect(() => {
@@ -109,10 +112,10 @@ export default function DuelGame({
     const result: MatchResult = duel.matchWinner === you ? 'win' : duel.matchWinner === -1 ? 'draw' : 'loss';
     const opp = typeof oppRating === 'number' ? oppRating : myRating;
     const newRating = applyResult(myRating, opp, result);
-    const change: RatingChange = { result, newRating, delta: newRating - myRating, oppRating: opp, vsBot };
+    const change: RatingChange = { result, newRating, delta: newRating - myRating, oppRating: opp, vsBot, oppId };
     setRatingChange(change);
     onRatingResult?.(change);
-  }, [ranked, duel, role, oppRating, myRating, vsBot, onRatingResult]);
+  }, [ranked, duel, role, oppRating, myRating, vsBot, oppId, onRatingResult]);
 
   // Действия лобби с разметкой режима для аналитики.
   const onQuick = useCallback(() => {
