@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform,
   StyleSheet,
@@ -446,7 +446,7 @@ export default function DuelGame({
               return (
                 <View
                   key={`${si}-${i}`}
-                  style={{ position: 'absolute', left: p.x * cell, top: p.y * cell, width: cell, height: cell, padding: 0.5 }}
+                  style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 0.5, transform: [{ translateX: p.x * cell }, { translateY: p.y * cell }] }}
                 >
                   <View
                     style={[
@@ -481,7 +481,7 @@ export default function DuelGame({
               return (
                 <View
                   key={`f-${i}`}
-                  style={{ position: 'absolute', left: f.pos.x * cell, top: f.pos.y * cell, width: cell, height: cell, padding: 0.5 }}
+                  style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 0.5, transform: [{ translateX: f.pos.x * cell }, { translateY: f.pos.y * cell }] }}
                 >
                   <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: '#FFE680', shadowColor: '#FFD75E', shadowOpacity: 1, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 8, alignItems: 'center', justifyContent: 'center' }}>
                     <View style={{ width: cell * 0.34, height: cell * 0.34, borderRadius: cell * 0.2, backgroundColor: '#fff' }} />
@@ -495,7 +495,7 @@ export default function DuelGame({
             return (
               <View
                 key={`f-${i}`}
-                style={{ position: 'absolute', left: f.pos.x * cell, top: f.pos.y * cell, width: cell, height: cell, padding: 1, opacity }}
+                style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 1, opacity, transform: [{ translateX: f.pos.x * cell }, { translateY: f.pos.y * cell }] }}
               >
                 <View style={{ flex: 1, borderRadius: f.color === you ? cell / 2 : (colorblindOn() ? cell * 0.12 : cell / 2), backgroundColor: P[f.color].food, shadowColor: P[f.color].food, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 5 }} />
               </View>
@@ -575,14 +575,7 @@ export default function DuelGame({
         </View>
       </GestureDetector>
 
-      <View style={styles.dpad}>
-        <DirButton label="▲" dir="up" onPress={doTurn} />
-        <View style={styles.dpadRow}>
-          <DirButton label="◀" dir="left" onPress={doTurn} />
-          <DirButton label="▼" dir="down" onPress={doTurn} />
-          <DirButton label="▶" dir="right" onPress={doTurn} />
-        </View>
-      </View>
+      <Dpad onPress={doTurn} />
 
       <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
         <Text style={styles.backText}>Leave</Text>
@@ -636,6 +629,20 @@ function DirButton({ label, dir, onPress }: { label: string; dir: Direction; onP
     </TouchScale>
   );
 }
+
+// D-pad мемоизирован: onPress (doTurn) стабилен, панель не реконсилится каждый тик.
+const Dpad = memo(function Dpad({ onPress }: { onPress: (d: Direction) => void }) {
+  return (
+    <View style={styles.dpad}>
+      <DirButton label="▲" dir="up" onPress={onPress} />
+      <View style={styles.dpadRow}>
+        <DirButton label="◀" dir="left" onPress={onPress} />
+        <DirButton label="▼" dir="down" onPress={onPress} />
+        <DirButton label="▶" dir="right" onPress={onPress} />
+      </View>
+    </View>
+  );
+});
 
 const styles = StyleSheet.create({
   container: {

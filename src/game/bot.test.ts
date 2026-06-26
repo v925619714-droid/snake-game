@@ -13,6 +13,7 @@ function duel(p: Partial<DuelState> = {}): DuelState {
     ],
     dirs: ['right', 'right'],
     pending: ['right', 'right'],
+    queues: [[], []],
     foods: [],
     roundScore: [0, 0],
     matchWins: [0, 0],

@@ -22,6 +22,7 @@ function playingState(partial: Partial<GameState> = {}): GameState {
     food: { x: 0, y: 0 },
     dir: 'right',
     pendingDir: 'right',
+    queue: [],
     score: 0,
     status: 'playing',
     ...partial,
@@ -47,15 +48,38 @@ describe('createInitialState', () => {
 });
 
 describe('turn', () => {
-  test('разворот на 180° игнорируется', () => {
+  test('разворот на 180° игнорируется (в очередь не попадает)', () => {
     const s = playingState({ dir: 'right', pendingDir: 'right' });
-    expect(turn(s, 'left').pendingDir).toBe('right');
+    expect(turn(s, 'left').queue).toHaveLength(0);
   });
-  test('поворот на 90° принимается', () => {
-    expect(turn(playingState({ dir: 'right' }), 'up').pendingDir).toBe('up');
+  test('поворот на 90° встаёт в очередь', () => {
+    expect(turn(playingState({ dir: 'right' }), 'up').queue).toEqual(['up']);
+  });
+  test('повтор того же направления игнорируется', () => {
+    expect(turn(playingState({ dir: 'right', pendingDir: 'right' }), 'right').queue).toHaveLength(0);
   });
   test('не действует вне статуса playing', () => {
-    expect(turn(playingState({ status: 'ready' }), 'up').pendingDir).toBe('right');
+    expect(turn(playingState({ status: 'ready' }), 'up').queue).toHaveLength(0);
+  });
+
+  test('буфер копит до двух поворотов (быстрый «угол» up→left)', () => {
+    let s = playingState({ dir: 'right', pendingDir: 'right' });
+    s = turn(s, 'up'); // 90° от right
+    s = turn(s, 'left'); // 90° от up (но 180° к right — раньше терялся!)
+    expect(s.queue).toEqual(['up', 'left']);
+  });
+  test('третий поворот сверх буфера отбрасывается', () => {
+    let s = playingState({ dir: 'right', pendingDir: 'right' });
+    s = turn(s, 'up');
+    s = turn(s, 'left');
+    s = turn(s, 'down'); // буфер уже полон (2)
+    expect(s.queue).toEqual(['up', 'left']);
+  });
+  test('180° к хвосту очереди отбрасывается', () => {
+    let s = playingState({ dir: 'right', pendingDir: 'right' });
+    s = turn(s, 'up');
+    s = turn(s, 'down'); // 180° к 'up' (хвост очереди) → игнор
+    expect(s.queue).toEqual(['up']);
   });
 });
 
@@ -65,6 +89,15 @@ describe('step', () => {
     expect(n.snake[0]).toEqual({ x: 6, y: 5 });
     expect(n.snake).toHaveLength(3);
     expect(n.score).toBe(0);
+  });
+
+  test('шаг применяет один поворот из очереди и сдвигает её', () => {
+    const s = playingState({ queue: ['up', 'left'] });
+    const n = step(s, rng0);
+    expect(n.snake[0]).toEqual({ x: 5, y: 4 }); // повернул вверх (5,5)→(5,4)
+    expect(n.dir).toBe('up');
+    expect(n.pendingDir).toBe('up');
+    expect(n.queue).toEqual(['left']); // второй поворот остался в буфере
   });
 
   test('поедание еды растит змейку и увеличивает счёт', () => {

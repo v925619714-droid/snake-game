@@ -20,6 +20,7 @@ function duel(p: Partial<DuelState> = {}): DuelState {
     ],
     dirs: ['right', 'right'],
     pending: ['right', 'right'],
+    queues: [[], []],
     foods: [],
     roundScore: [0, 0],
     matchWins: [0, 0],
@@ -102,11 +103,31 @@ describe('мигание еды (инертна 3с)', () => {
   });
 });
 
-describe('duelTurn', () => {
-  test('180 игнор, 90 принят', () => {
+describe('duelTurn (буфер ввода)', () => {
+  test('180 игнор, 90 встаёт в очередь игрока', () => {
     const s = duel();
-    expect(duelTurn(s, 0, 'left').pending[0]).toBe('right');
-    expect(duelTurn(s, 0, 'up').pending[0]).toBe('up');
+    expect(duelTurn(s, 0, 'left').queues[0]).toHaveLength(0); // 180° → не в очередь
+    expect(duelTurn(s, 0, 'up').queues[0][0]).toBe('up'); // 90° → в очередь
+  });
+  test('очередь игрока не задевает соперника', () => {
+    const s = duel();
+    const n = duelTurn(s, 1, 'up');
+    expect(n.queues[1][0]).toBe('up');
+    expect(n.queues[0]).toHaveLength(0);
+  });
+  test('копит до двух поворотов, третий отбрасывается', () => {
+    let s = duel();
+    s = duelTurn(s, 0, 'up'); // 90° от right
+    s = duelTurn(s, 0, 'left'); // 90° от up
+    s = duelTurn(s, 0, 'down'); // буфер полон
+    expect(s.queues[0]).toEqual(['up', 'left']);
+  });
+  test('duelStep применяет один поворот из очереди и сдвигает её', () => {
+    const s = duel({ queues: [['up'], []] });
+    const n = duelStep(s, rng0);
+    expect(n.snakes[0][0]).toEqual({ x: 5, y: 4 }); // (5,5) повернул вверх
+    expect(n.dirs[0]).toBe('up');
+    expect(n.queues[0]).toHaveLength(0);
   });
 });
 

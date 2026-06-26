@@ -21,6 +21,9 @@ export const FOOD_BLINK_TICKS = 20;
 // Даёт обогнать соперника, быстрее собрать свою еду/вырасти и подрезать его.
 export const BOOST_TICKS = 50;
 export const BOOST_FOOD_EVERY = 60; // как часто (тиков) спавнить буст-еду, если её нет
+// Буфер поворотов на игрока (как в соло-режиме): делает ввод отзывчивым на быстром
+// темпе — до 2 заказанных поворотов, применяются по одному за тик.
+export const MAX_DUEL_TURN_QUEUE = 2;
 
 export type DuelStatus = 'playing' | 'roundOver' | 'matchOver';
 
@@ -38,7 +41,8 @@ export interface Food {
 export interface DuelState {
   snakes: Point[][];
   dirs: Direction[];
-  pending: Direction[];
+  pending: Direction[]; // направление, исполняемое в текущем тике (из очереди/предыдущего)
+  queues: [Direction[], Direction[]]; // буфер поворотов на игрока (≤ MAX_DUEL_TURN_QUEUE)
   foods: Food[];
   roundScore: [number, number];
   matchWins: [number, number];
@@ -120,6 +124,7 @@ function freshRound(round: number, matchWins: [number, number], rng: () => numbe
     snakes: [s0, s1],
     dirs: ['right', 'right'],
     pending: ['right', 'right'],
+    queues: [[], []],
     foods: ensureFoods([s0, s1], [], rng, 0), // стартовая еда сразу живая (видна с начала раунда)
     roundScore: [0, 0],
     matchWins,
@@ -142,12 +147,17 @@ export function duelNextRound(state: DuelState, rng: () => number = Math.random)
   return freshRound(state.round + 1, state.matchWins, rng);
 }
 
+// Поставить поворот игрока в его очередь. Сверяем с хвостом очереди (или с текущим
+// направлением, если она пуста): 180° и дубль игнорируем, буфер ≤ MAX_DUEL_TURN_QUEUE.
 export function duelTurn(state: DuelState, player: 0 | 1, dir: Direction): DuelState {
   if (state.status !== 'playing') return state;
-  if (isOpposite(dir, state.dirs[player])) return state;
-  const pending = [...state.pending] as Direction[];
-  pending[player] = dir;
-  return { ...state, pending };
+  const q = state.queues[player];
+  const last = q.length ? q[q.length - 1] : state.dirs[player];
+  if (dir === last || isOpposite(dir, last)) return state;
+  if (q.length >= MAX_DUEL_TURN_QUEUE) return state;
+  const queues: [Direction[], Direction[]] = [[...state.queues[0]], [...state.queues[1]]];
+  queues[player] = [...q, dir];
+  return { ...state, queues };
 }
 
 function endRound(
@@ -256,8 +266,19 @@ export function duelStep(state: DuelState, rng: () => number = Math.random): Due
   const startBoosts = state.boosts ?? [0, 0];
   let picked: [boolean, boolean] = [false, false];
 
+  // Применяем по одному заказанному повороту из буфера каждому игроку (отзывчивый ввод).
+  // Буст (фаза 2) использует то же направление — за тик исполняется максимум один поворот.
+  const q0 = state.queues ?? [[], []];
+  const pending = [...state.pending] as Direction[];
+  const queues: [Direction[], Direction[]] = [q0[0].slice(), q0[1].slice()];
+  for (let i = 0; i < 2; i++) {
+    const nd = queues[i].shift();
+    if (nd) pending[i] = nd;
+  }
+  const base: DuelState = { ...state, pending, queues };
+
   // Фаза 1: оба двигаются на 1 клетку.
-  const r1 = advance(state, [true, true], rng);
+  const r1 = advance(base, [true, true], rng);
   if (r1.ended) return r1.ended;
   let cur = r1.state!;
   picked = [r1.picked[0], r1.picked[1]];
@@ -287,5 +308,5 @@ export function duelStep(state: DuelState, rng: () => number = Math.random): Due
   }
 
   // Раунд заканчивается ТОЛЬКО при крахе (обработан в advance). Ни по очкам, ни по времени.
-  return { ...cur, foods, boosts, tick, dirs: [...state.pending] as Direction[] };
+  return { ...cur, foods, boosts, tick, dirs: [...pending] as Direction[], queues };
 }

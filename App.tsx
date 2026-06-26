@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Platform,
@@ -777,7 +777,7 @@ function AppInner() {
                 return (
                   <View
                     key={i}
-                    style={{ position: 'absolute', left: p.x * cell, top: p.y * cell, width: cell, height: cell, padding: 1 }}
+                    style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 1, transform: [{ translateX: p.x * cell }, { translateY: p.y * cell }] }}
                   >
                     <View
                       style={[
@@ -807,7 +807,7 @@ function AppInner() {
               })}
 
               <View
-                style={{ position: 'absolute', left: state.food.x * cell, top: state.food.y * cell, width: cell, height: cell, padding: 2 }}
+                style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 2, transform: [{ translateX: state.food.x * cell }, { translateY: state.food.y * cell }] }}
               >
                 <Animated.View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: COLORS.food, shadowColor: COLORS.food, shadowOpacity: 0.95, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 6, transform: [{ scale: foodScale }] }} />
               </View>
@@ -877,14 +877,7 @@ function AppInner() {
 
           <Text style={styles.hint}>Swipe anywhere or use the D-pad</Text>
 
-          <View style={styles.dpad}>
-            <DirButton label="▲" dir="up" onPress={handleTurn} />
-            <View style={styles.dpadRow}>
-              <DirButton label="◀" dir="left" onPress={handleTurn} />
-              <DirButton label="▼" dir="down" onPress={handleTurn} />
-              <DirButton label="▶" dir="right" onPress={handleTurn} />
-            </View>
-          </View>
+          <Dpad onPress={handleTurn} />
         </View>
         {showOnboarding && <Onboarding onDone={finishOnboarding} />}
       </LinearGradient>
@@ -915,6 +908,21 @@ function DirButton({
     </TouchScale>
   );
 }
+
+// D-pad вынесен и мемоизирован: onPress стабилен (useCallback), поэтому панель НЕ
+// реконсилится на каждом игровом тике (меньше работы рендера → плавнее).
+const Dpad = memo(function Dpad({ onPress }: { onPress: (d: Direction) => void }) {
+  return (
+    <View style={styles.dpad}>
+      <DirButton label="▲" dir="up" onPress={onPress} />
+      <View style={styles.dpadRow}>
+        <DirButton label="◀" dir="left" onPress={onPress} />
+        <DirButton label="▼" dir="down" onPress={onPress} />
+        <DirButton label="▶" dir="right" onPress={onPress} />
+      </View>
+    </View>
+  );
+});
 
 function ShopOverlay({
   wallet,

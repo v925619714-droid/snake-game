@@ -232,8 +232,15 @@ export function useRoom() {
         lastSeqRef.current = seq;
         const st = payload.state as DuelState;
         apply(st);
-        // ввод гостя применён хостом → прекращаем ретрай
-        if (lastInputRef.current && st.dirs && st.dirs[1] === lastInputRef.current) lastInputRef.current = null;
+        // ввод гостя принят хостом (попал в его очередь или уже исполнен) → прекращаем ретрай
+        const li = lastInputRef.current;
+        if (
+          li &&
+          ((st.queues && st.queues[1] && st.queues[1].includes(li)) ||
+            (st.dirs && st.dirs[1] === li))
+        ) {
+          lastInputRef.current = null;
+        }
       });
       ch.on('broadcast', { event: 'input' }, ({ payload }) => {
         lastPeerRef.current = Date.now();
@@ -529,14 +536,21 @@ export function useRoom() {
         const cur = duelRef.current;
         if (cur) apply(duelTurn(cur, 0, dir));
       } else {
-        // ввод гостя fire-and-forget по сети → отправляем + один повтор через 90мс
-        // (надёжность при потере пакета). Повтор сам отменяется, когда хост отразит ход.
+        // ввод гостя по сети → отправляем сразу + повторяем до 3 раз каждые 80мс, пока
+        // хост не подтвердит приём (lastInputRef очищается в обработчике 'state').
+        // Надёжность при потере пакета без заметной задержки.
         lastInputRef.current = dir;
         broadcast('input', { dir });
         if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
-        inputRetryRef.current = setTimeout(() => {
-          if (lastInputRef.current) broadcast('input', { dir: lastInputRef.current });
-        }, 90);
+        let tries = 0;
+        const resend = () => {
+          inputRetryRef.current = null;
+          if (!lastInputRef.current || tries >= 3) return;
+          tries += 1;
+          broadcast('input', { dir: lastInputRef.current });
+          inputRetryRef.current = setTimeout(resend, 80);
+        };
+        inputRetryRef.current = setTimeout(resend, 80);
       }
     },
     [apply, broadcast],
