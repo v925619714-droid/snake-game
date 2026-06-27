@@ -6,7 +6,7 @@ import { palette as C, gradients, fonts } from '../theme/tokens';
 import { TouchScale } from '../ui/anim';
 import { type AuthUser, deleteAccount, sendEmailCode, signOut, verifyEmailCode } from '../lib/auth';
 
-const PRIVACY_URL = 'https://v925619714-droid.github.io/snake-game/privacy.html';
+const PRIVACY_URL = 'https://snake.skillmake.ru/privacy.html';
 
 export default function Account({
   user,

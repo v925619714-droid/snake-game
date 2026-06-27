@@ -4,7 +4,10 @@ const appJson = require('./app.json');
 
 module.exports = () => {
   const expo = { ...appJson.expo };
-  if (!process.env.LOCAL_WEB) {
+  // Свой домен snake.skillmake.ru отдаётся с КОРНЯ → baseUrl не задаём (пути от корня).
+  // Старый project-page /snake-game/ больше не используем (есть custom domain + CNAME).
+  // На случай возврата к project-page: PAGES_SUBDIR=1 → база /snake-game.
+  if (process.env.PAGES_SUBDIR) {
     expo.experiments = { ...(expo.experiments || {}), baseUrl: '/snake-game' };
   }
   return { expo };

@@ -3,7 +3,7 @@
 import { Platform, Share } from 'react-native';
 
 // Публичная ссылка на игру (для бэклинка в шеринге).
-export const GAME_URL = 'https://v925619714-droid.github.io/snake-game/';
+export const GAME_URL = 'https://snake.skillmake.ru/';
 
 export type ShareOutcome = 'shared' | 'copied' | 'failed';
 
