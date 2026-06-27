@@ -75,7 +75,7 @@ export default function DuelGame({
   const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - insets.top - insets.bottom - 300, 420)));
   const cell = boardPx / DUEL_BOARD;
 
-  const { conn, role, code, duel, oppRating, oppId, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
+  const { conn, role, code, duel, oppRating, oppId, vsBot, oppLeft, netError, joinFailed, createRoom, joinRoom, rejoin, playBot, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [shareNote, setShareNote] = useState('');
@@ -104,10 +104,12 @@ export default function DuelGame({
     }
   }, [ranked, autoJoin, conn, rankedMatch, joinRoom, myRating, myId]);
 
-  // Ranked: хост авто-стартует, когда соперник найден.
+  // Хост авто-стартует, как только реальный соперник зашёл в комнату — и в ranked, и в
+  // игре с другом по ссылке. Убирает ручной «Start» как точку отказа (друг заходил, а
+  // матч не начинался, пока хост не нажмёт кнопку).
   useEffect(() => {
-    if (ranked && role === 'host' && conn === 'ready' && !duel) startGame();
-  }, [ranked, role, conn, duel, startGame]);
+    if (role === 'host' && conn === 'ready' && !duel) startGame();
+  }, [role, conn, duel, startGame]);
 
   // Ranked: однократно посчитать изменение рейтинга в конце матча.
   useEffect(() => {
@@ -293,6 +295,22 @@ export default function DuelGame({
       <View style={[styles.container, pad]}>
         <Text style={styles.title}>{ranked ? 'Ranked' : 'Color Duel'}</Text>
 
+        {joinFailed && (
+          <View style={styles.lobby}>
+            <Text style={styles.status}>Room not found</Text>
+            <Text style={[styles.subtle, { textAlign: 'center' }]}>
+              A friend's room stays active only while they keep Chroma Coil open on the invite
+              screen. Ask them to tap "Play with a friend" again — or:
+            </Text>
+            <TouchScale style={styles.bigBtn} onPress={() => { if (autoJoin) rejoin(autoJoin); }} accessibilityLabel="retry-join">
+              <Text style={styles.bigBtnText}>Try again</Text>
+            </TouchScale>
+            <TouchScale style={styles.altBtn} onPress={() => playBot(myRating)} accessibilityLabel="play-bot">
+              <Text style={styles.altBtnText}>Play vs bot</Text>
+            </TouchScale>
+          </View>
+        )}
+
         {ranked && (conn === 'idle' || conn === 'searching' || conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
           <View style={styles.lobby}>
             <View style={styles.rankBox}>
@@ -350,7 +368,7 @@ export default function DuelGame({
           </View>
         )}
 
-        {!ranked && (conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
+        {!ranked && !joinFailed && (conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
           <View style={styles.lobby}>
             {role === 'host' && (
               <View style={styles.codeBox}>
@@ -367,6 +385,7 @@ export default function DuelGame({
                   </>
                 )}
                 <Text style={styles.codeHint}>Send the code or link to a friend</Text>
+                <Text style={styles.codeHint}>Keep this screen open until they join</Text>
               </View>
             )}
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>

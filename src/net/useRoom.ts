@@ -20,6 +20,9 @@ const BOT_FALLBACK_MS = 7000;
 const QUICK_FALLBACK_MS = 8000;
 // Соперник найден в очереди, но не зашёл в комнату за это время → бот-фолбэк.
 const ROOM_PEER_TIMEOUT_MS = 10000;
+// Инвайт-join по ссылке: сколько ждём хоста в комнате, прежде чем показать «комната не найдена».
+// Комната живёт только пока хост держит лобби открытым — без этого гость ждал бы вечно.
+const INVITE_TIMEOUT_MS = 18000;
 // Устойчивость связи: пинг-heartbeat и порог «соперник пропал».
 const HEARTBEAT_MS = 2000;
 const PEER_TIMEOUT_MS = 7000; // нет вестей от соперника столько → считаем, что он отвалился
@@ -53,6 +56,8 @@ export function useRoom() {
   // Соперник покинул матч (мы победили форфейтом) / наш канал потерял связь во время матча.
   const [oppLeft, setOppLeft] = useState(false);
   const [netError, setNetError] = useState(false);
+  // Инвайт по ссылке: хост не появился в комнате за таймаут (комната «умерла» / друг офлайн).
+  const [joinFailed, setJoinFailed] = useState(false);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const duelRef = useRef<DuelState | null>(null);
@@ -81,6 +86,7 @@ export function useRoom() {
   const lastInputRef = useRef<Direction | null>(null); // последний ввод гостя (для resend)
   const inputRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const netBadSinceRef = useRef(0); // когда канал упал (для дебаунса netError)
+  const inviteWatchRef = useRef<ReturnType<typeof setTimeout> | null>(null); // таймаут инвайт-join
 
   const apply = useCallback((s: DuelState | null) => {
     duelRef.current = s;
@@ -125,6 +131,13 @@ export function useRoom() {
     if (joinWatchRef.current) {
       clearTimeout(joinWatchRef.current);
       joinWatchRef.current = null;
+    }
+  }, []);
+
+  const clearInviteWatch = useCallback(() => {
+    if (inviteWatchRef.current) {
+      clearTimeout(inviteWatchRef.current);
+      inviteWatchRef.current = null;
     }
   }, []);
 
@@ -210,6 +223,8 @@ export function useRoom() {
       setCode(roomCode);
       setOppLeft(false);
       setNetError(false);
+      setJoinFailed(false);
+      clearInviteWatch();
       peerEverRef.current = false;
       expectPeerRef.current = expectPeer;
       channelOkRef.current = false;
@@ -267,6 +282,8 @@ export function useRoom() {
           peerEverRef.current = true;
           lastPeerRef.current = Date.now();
           clearJoinWatch();
+          clearInviteWatch();
+          setJoinFailed(false); // хост подключился (в т.ч. позже таймаута) → убираем «комната не найдена»
         }
         const cur = duelRef.current;
         const inMatch = cur && (cur.status === 'playing' || cur.status === 'roundOver');
@@ -290,6 +307,14 @@ export function useRoom() {
           startWatchdog();
           // Гость после (пере)подключения просит у хоста актуальный снимок.
           if (asRole === 'guest') broadcast('resync', {});
+          // Инвайт-join по ссылке (гость, НЕ из очереди): если хост так и не появился —
+          // показываем «комната не найдена» вместо вечного ожидания.
+          if (asRole === 'guest' && !expectPeer) {
+            clearInviteWatch();
+            inviteWatchRef.current = setTimeout(() => {
+              if (!peerEverRef.current && !duelRef.current) setJoinFailed(true);
+            }, INVITE_TIMEOUT_MS);
+          }
           // Соперник найден в очереди, но не заходит в комнату → бот-фолбэк.
           if (expectPeerRef.current) {
             clearJoinWatch();
@@ -318,7 +343,7 @@ export function useRoom() {
         }
       });
     },
-    [apply, broadcast, broadcastState, startHeartbeat, startWatchdog, handleOppGone, clearJoinWatch, stopHeartbeat, stopWatchdog],
+    [apply, broadcast, broadcastState, startHeartbeat, startWatchdog, handleOppGone, clearJoinWatch, clearInviteWatch, stopHeartbeat, stopWatchdog],
   );
 
   const createRoom = useCallback(() => {
@@ -326,6 +351,22 @@ export function useRoom() {
     connect('host', c, false);
     return c;
   }, [connect]);
+
+  // Повторить вход по той же ссылке после «комната не найдена» (друг мог зайти позже).
+  const rejoin = useCallback(
+    (c: string) => {
+      clearInviteWatch();
+      stopHeartbeat();
+      stopWatchdog();
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      setJoinFailed(false);
+      connect('guest', c.toUpperCase().trim(), false);
+    },
+    [connect, clearInviteWatch, stopHeartbeat, stopWatchdog],
+  );
 
   const joinRoom = useCallback(
     (c: string) => {
@@ -394,6 +435,20 @@ export function useRoom() {
     [apply, startBotLoop, stopHeartbeat, stopWatchdog, clearJoinWatch],
   );
   botFallbackRef.current = () => startBotMatch(myRatingRef.current);
+
+  // «Сыграть с ботом» с экрана «комната не найдена» (вместо ожидания друга).
+  const playBot = useCallback(
+    (myRating: number) => {
+      clearInviteWatch();
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      setJoinFailed(false);
+      startBotMatch(myRating);
+    },
+    [startBotMatch, clearInviteWatch],
+  );
 
   // Быстрый матч со случайным игроком (без рейтинга).
   // Очередь — общий presence-канал; детерминированный паринг: меньший id = хост.
@@ -561,10 +616,12 @@ export function useRoom() {
     if (breakRef.current) clearTimeout(breakRef.current);
     clearBotTimer();
     clearJoinWatch();
+    clearInviteWatch();
     stopHeartbeat();
     stopWatchdog();
     cleanupMM();
     if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
+    setJoinFailed(false);
     matchedRef.current = false;
     rankedRef.current = false;
     botRef.current = false;
@@ -590,7 +647,7 @@ export function useRoom() {
     setConn('idle');
     setRole(null);
     setCode('');
-  }, [apply, cleanupMM, stopLoop, clearBotTimer, clearJoinWatch, stopHeartbeat, stopWatchdog]);
+  }, [apply, cleanupMM, stopLoop, clearBotTimer, clearJoinWatch, clearInviteWatch, stopHeartbeat, stopWatchdog]);
 
   useEffect(
     () => () => {
@@ -598,6 +655,7 @@ export function useRoom() {
       if (breakRef.current) clearTimeout(breakRef.current);
       if (botTimerRef.current) clearTimeout(botTimerRef.current);
       if (joinWatchRef.current) clearTimeout(joinWatchRef.current);
+      if (inviteWatchRef.current) clearTimeout(inviteWatchRef.current);
       if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
       if (hbRef.current) clearInterval(hbRef.current);
       if (watchdogRef.current) clearInterval(watchdogRef.current);
@@ -607,5 +665,5 @@ export function useRoom() {
     [stopLoop],
   );
 
-  return { conn, role, code, duel, oppRating, oppId, vsBot, oppLeft, netError, createRoom, joinRoom, quickMatch, rankedMatch, startGame, turn, leave };
+  return { conn, role, code, duel, oppRating, oppId, vsBot, oppLeft, netError, joinFailed, createRoom, joinRoom, rejoin, playBot, quickMatch, rankedMatch, startGame, turn, leave };
 }
