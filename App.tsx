@@ -146,6 +146,10 @@ function AppInner() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [duelRanked, setDuelRanked] = useState(false);
+  // Комната из инвайт-ссылки — ОДНОРАЗОВАЯ: после выхода из дуэли или ручного входа в
+  // Versus/Ranked сбрасываем, иначе повторный Versus снова цеплялся бы к старой (мёртвой)
+  // комнате и не давал создать новую.
+  const [inviteRoom, setInviteRoom] = useState<string | null>(initialRoom);
   const prevScore = useRef(0);
   const walletLoaded = useRef(false);
   const walletRef = useRef(wallet);
@@ -600,8 +604,8 @@ function AppInner() {
     return (
       <GestureHandlerRootView style={styles.root}>
         <DuelGame
-          onExit={() => setMode('menu')}
-          autoJoin={duelRanked ? null : initialRoom}
+          onExit={() => { setInviteRoom(null); setMode('menu'); }}
+          autoJoin={duelRanked ? null : inviteRoom}
           ranked={duelRanked}
           myRating={profile?.rating ?? 1000}
           myId={profile?.id ?? ''}
@@ -680,6 +684,7 @@ function AppInner() {
               style={[styles.ctaWrap, styles.wide]}
               onPress={() => {
                 track(EVENTS.matchmakingStart, { mode: 'versus' });
+                setInviteRoom(null); // ручной Versus → чистое лобби, не цепляться к старой ссылке
                 setDuelRanked(false);
                 setMode('duel');
               }}
@@ -694,6 +699,7 @@ function AppInner() {
               style={[styles.ctaWrap, styles.wide]}
               onPress={() => {
                 track(EVENTS.matchmakingStart, { mode: 'ranked', rating: profile?.rating ?? 1000 });
+                setInviteRoom(null);
                 setDuelRanked(true);
                 setMode('duel');
               }}

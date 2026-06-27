@@ -239,6 +239,16 @@ export function useRoom() {
       });
       channelRef.current = ch;
 
+      // Инвайт-join по ссылке (гость, НЕ из очереди): запускаем сторож СРАЗУ, не дожидаясь
+      // SUBSCRIBED — иначе при зависании на «Connecting…» (websocket не поднялся, напр. в
+      // браузере соцсети) экран висел бы вечно. Если хост придёт — presence-sync его снимет.
+      if (asRole === 'guest' && !expectPeer) {
+        clearInviteWatch();
+        inviteWatchRef.current = setTimeout(() => {
+          if (!peerEverRef.current && !duelRef.current) setJoinFailed(true);
+        }, INVITE_TIMEOUT_MS);
+      }
+
       ch.on('broadcast', { event: 'state' }, ({ payload }) => {
         lastPeerRef.current = Date.now();
         if (roleRef.current !== 'guest') return;
@@ -307,14 +317,7 @@ export function useRoom() {
           startWatchdog();
           // Гость после (пере)подключения просит у хоста актуальный снимок.
           if (asRole === 'guest') broadcast('resync', {});
-          // Инвайт-join по ссылке (гость, НЕ из очереди): если хост так и не появился —
-          // показываем «комната не найдена» вместо вечного ожидания.
-          if (asRole === 'guest' && !expectPeer) {
-            clearInviteWatch();
-            inviteWatchRef.current = setTimeout(() => {
-              if (!peerEverRef.current && !duelRef.current) setJoinFailed(true);
-            }, INVITE_TIMEOUT_MS);
-          }
+          // (сторож инвайт-join уже запущен в теле connect — покрывает и зависание на Connecting)
           // Соперник найден в очереди, но не заходит в комнату → бот-фолбэк.
           if (expectPeerRef.current) {
             clearJoinWatch();
