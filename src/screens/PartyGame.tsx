@@ -1,20 +1,34 @@
 // Экран корпоративного режима «Shake Work Off» (FFA 5–10).
-// Ф2: ЛОКАЛЬНЫЙ прогон (слот 0 — игрок, остальные слоты — боты) для проверки рендера
-// и управления. Сетевой матч (лобби по коду, реальные игроки) добавляется в Ф3 поверх
-// этого же экрана. Существующие режимы не затронуты — отдельный модуль.
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+// Главный экран маршрутизирует: Practice vs bots (локально) ИЛИ Team room (по сети).
+// Рендер поля общий (PartyBoard). Существующие режимы не затронуты — отдельный модуль.
+import { type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { type PartyState, partyNewMatch, partyStep, partyTurn } from '../game/party';
+import {
+  PARTY_MIN,
+  type PartyState,
+  partyNewMatch,
+  partyStep,
+  partyTurn,
+} from '../game/party';
 import { partyBotDir } from '../game/partyBot';
 import { type Direction, swipeToDirection } from '../game/logic';
+import { usePartyRoom } from '../net/usePartyRoom';
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import { hLight, hSuccess, hError } from '../lib/settings';
 import { play as playSfx } from '../lib/sound';
 
 const TICK_MS = 150;
+const COUNT_OPTIONS = [5, 6, 8, 10];
 
 const C = {
   bg: '#0B0F17',
@@ -26,7 +40,6 @@ const C = {
   accent: '#3DDC84',
 };
 
-// Палитра на 10 слотов (различимые цвета).
 const PARTY_COLORS = [
   { body: '#ff5c5c', head: '#ffb0a3' },
   { body: '#5cc8ff', head: '#b3e8ff' },
@@ -40,268 +53,103 @@ const PARTY_COLORS = [
   { body: '#9ad34d', head: '#d8f0a8' },
 ];
 
-const COUNT_OPTIONS = [5, 6, 8, 10];
-
-export default function PartyGame({ onExit }: { onExit: () => void }) {
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const [count, setCount] = useState(5);
-  const [state, setState] = useState<PartyState | null>(null);
-  const overDone = useRef(false);
-
-  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
-  const boardPx = Math.max(
-    260,
-    Math.floor(Math.min(width - 20, height - insets.top - insets.bottom - 240, 480)),
-  );
-  const cell = state ? boardPx / state.board : 0;
-
-  const start = useCallback((n: number) => {
-    overDone.current = false;
-    setState(partyNewMatch(n));
-  }, []);
-
-  const handleTurn = useCallback((dir: Direction) => {
-    setState((s) => (s && s.status === 'playing' ? partyTurn(s, 0, dir) : s));
-  }, []);
-
-  // Самопланирующийся локальный цикл: каждый тик боты (слоты 1..n-1) решают ход, затем шаг.
-  useEffect(() => {
-    if (!state || state.status !== 'playing') return;
-    let id: ReturnType<typeof setTimeout>;
-    const tick = () => {
-      setState((prev) => {
-        if (!prev || prev.status !== 'playing') return prev;
-        let s = prev;
-        for (let i = 1; i < s.snakes.length; i++) {
-          if (s.alive[i]) s = partyTurn(s, i, partyBotDir(s, i));
-        }
-        return partyStep(s);
-      });
-      id = setTimeout(tick, TICK_MS);
-    };
-    id = setTimeout(tick, TICK_MS);
-    return () => clearTimeout(id);
-  }, [state?.status]);
-
-  // Звук/хаптика на финише (однократно).
-  useEffect(() => {
-    if (!state || state.status !== 'over' || overDone.current) return;
-    overDone.current = true;
-    const won = state.winner === 0;
-    playSfx(won ? 'win' : 'lose');
-    if (won) hSuccess();
-    else hError();
-  }, [state?.status, state?.winner]);
-
-  const doTurn = useCallback(
-    (dir: Direction) => {
-      if (state?.status !== 'playing' || !state.alive[0]) return;
-      hLight();
-      handleTurn(dir);
-    },
-    [state?.status, state?.alive, handleTurn],
-  );
-
-  const swipe = useMemo(() => {
-    let committed = false;
-    return Gesture.Pan()
-      .onBegin(() => {
-        committed = false;
-      })
-      .onUpdate((e) => {
-        if (committed) return;
-        if (Math.abs(e.translationX) + Math.abs(e.translationY) < 12) return;
-        const dir = swipeToDirection(e.translationX, e.translationY);
-        if (dir) {
-          committed = true;
-          doTurn(dir);
-        }
-      });
-  }, [doTurn]);
-
-  // ── ЛОББИ (выбор числа игроков) ──
-  if (!state) {
-    return (
-      <View style={[styles.container, pad]}>
-        <Text style={styles.title}>Shake Work Off</Text>
-        <Text style={styles.subtitle}>Last snake standing — winner doesn't work today</Text>
-        <Text style={styles.practiceNote}>Practice vs bots (local)</Text>
-
-        <View style={styles.countRow}>
-          {COUNT_OPTIONS.map((n) => (
-            <TouchScale
-              key={n}
-              style={[styles.countBtn, count === n && styles.countBtnActive]}
-              onPress={() => setCount(n)}
-              accessibilityLabel={`count-${n}`}
-            >
-              <Text style={[styles.countText, count === n && styles.countTextActive]}>{n}</Text>
-            </TouchScale>
-          ))}
-        </View>
-        <Text style={styles.subtle}>players</Text>
-
-        <TouchScale style={styles.bigBtn} onPress={() => start(count)} accessibilityLabel="party-start">
-          <Text style={styles.bigBtnText}>Start</Text>
-        </TouchScale>
-
-        <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
-          <Text style={styles.backText}>Back</Text>
-        </TouchScale>
-      </View>
-    );
-  }
-
-  // ── МАТЧ ──
-  const total = state.snakes.length;
-  const aliveCount = state.alive.filter(Boolean).length;
-  const youAlive = state.alive[0];
-  const youPos = state.placements.indexOf(0);
-  const youPlace = youPos < 0 ? 1 : total - youPos;
-  const z = state.shrink; // смещение зоны (сжатие)
-
+// ── общий рендер поля ──
+function PartyBoard({
+  state,
+  mySlot,
+  boardPx,
+  children,
+}: {
+  state: PartyState;
+  mySlot: number;
+  boardPx: number;
+  children?: ReactNode;
+}) {
+  const cell = boardPx / state.board;
+  const z = state.shrink;
   return (
-    <View style={[styles.container, pad]}>
-      <View style={styles.hud}>
-        <View style={[styles.chip, { borderColor: PARTY_COLORS[0].head }]}>
-          <Text style={styles.chipLabel}>YOU</Text>
-          <Text style={[styles.chipVal, { color: PARTY_COLORS[0].head }]}>
-            {youAlive ? 'alive' : `#${youPlace}`}
-          </Text>
-        </View>
-        <View style={styles.chip}>
-          <Text style={styles.chipLabel}>ALIVE</Text>
-          <Text style={styles.chipVal}>{aliveCount}/{total}</Text>
-        </View>
-      </View>
-
-      <GestureDetector gesture={swipe}>
-        <View style={[styles.boardWrap, { width: boardPx, height: boardPx }]}>
-          {/* играбельная зона (сжатие визуально) */}
-          {z > 0 && (
+    <View style={[styles.boardWrap, { width: boardPx, height: boardPx }]}>
+      {z > 0 && (
+        <View
+          style={{
+            position: 'absolute',
+            left: z * cell,
+            top: z * cell,
+            width: (state.board - 2 * z) * cell,
+            height: (state.board - 2 * z) * cell,
+            borderWidth: 1,
+            borderColor: 'rgba(255,90,90,0.5)',
+          }}
+        />
+      )}
+      {state.snakes.map((snake, si) => {
+        if (!state.alive[si]) return null;
+        const col = PARTY_COLORS[si % PARTY_COLORS.length];
+        const mine = si === mySlot;
+        return snake.map((p, i) => {
+          const isHead = i === 0;
+          return (
             <View
-              style={{
-                position: 'absolute',
-                left: z * cell,
-                top: z * cell,
-                width: (state.board - 2 * z) * cell,
-                height: (state.board - 2 * z) * cell,
-                borderWidth: 1,
-                borderColor: 'rgba(255,90,90,0.5)',
-              }}
-            />
-          )}
-
-          {state.snakes.map((snake, si) => {
-            if (!state.alive[si]) return null;
-            const col = PARTY_COLORS[si % PARTY_COLORS.length];
-            return snake.map((p, i) => {
-              const isHead = i === 0;
-              const mine = si === 0;
-              return (
-                <View
-                  key={`${si}-${i}`}
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    width: cell,
-                    height: cell,
-                    padding: 0.5,
-                    transform: [{ translateX: p.x * cell }, { translateY: p.y * cell }],
-                  }}
-                >
-                  <View
-                    style={[
-                      {
-                        flex: 1,
-                        borderRadius: cell * (isHead ? 0.34 : 0.28),
-                        backgroundColor: isHead ? col.head : shade(col.body, (i / snake.length) * 0.5),
-                      },
-                      isHead && {
-                        shadowColor: col.head,
-                        shadowOpacity: 0.9,
-                        shadowRadius: mine ? 7 : 4,
-                        shadowOffset: { width: 0, height: 0 },
-                        elevation: mine ? 7 : 4,
-                      },
-                      isHead && mine && { borderWidth: 1.5, borderColor: '#fff' },
-                    ]}
-                  />
-                </View>
-              );
-            });
-          })}
-
-          {state.foods.map((f, i) => (
-            <View
-              key={`f-${i}`}
+              key={`${si}-${i}`}
               style={{
                 position: 'absolute',
                 left: 0,
                 top: 0,
                 width: cell,
                 height: cell,
-                padding: 1.5,
-                transform: [{ translateX: f.pos.x * cell }, { translateY: f.pos.y * cell }],
+                padding: 0.5,
+                transform: [{ translateX: p.x * cell }, { translateY: p.y * cell }],
               }}
             >
               <View
-                style={{
-                  flex: 1,
-                  borderRadius: cell / 2,
-                  backgroundColor: '#F4F8FF',
-                  shadowColor: '#cfe0ff',
-                  shadowOpacity: 0.9,
-                  shadowRadius: 5,
-                  shadowOffset: { width: 0, height: 0 },
-                  elevation: 5,
-                }}
+                style={[
+                  {
+                    flex: 1,
+                    borderRadius: cell * (isHead ? 0.34 : 0.28),
+                    backgroundColor: isHead ? col.head : shade(col.body, (i / snake.length) * 0.5),
+                  },
+                  isHead && {
+                    shadowColor: col.head,
+                    shadowOpacity: 0.9,
+                    shadowRadius: mine ? 7 : 4,
+                    shadowOffset: { width: 0, height: 0 },
+                    elevation: mine ? 7 : 4,
+                  },
+                  isHead && mine && { borderWidth: 1.5, borderColor: '#fff' },
+                ]}
               />
             </View>
-          ))}
-
-          {state.status === 'over' && (
-            <View style={styles.overlay}>
-              {state.winner === 0 && <Confetti />}
-              <FadePop style={styles.overlayInner}>
-                <Text style={styles.overlayTitle}>
-                  {state.winner === 0
-                    ? "You don't work today! 🎉"
-                    : state.winner < 0
-                      ? 'Draw'
-                      : `You placed #${youPlace}`}
-                </Text>
-                <Text style={styles.overlaySub}>
-                  {state.winner >= 0 && state.winner !== 0
-                    ? `Winner: Player ${state.winner + 1}`
-                    : 'Last snake standing wins'}
-                </Text>
-                <TouchScale style={styles.bigBtn} onPress={() => start(count)} accessibilityLabel="party-again">
-                  <Text style={styles.bigBtnText}>Play again</Text>
-                </TouchScale>
-                <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
-                  <Text style={styles.backText}>Back</Text>
-                </TouchScale>
-              </FadePop>
-            </View>
-          )}
+          );
+        });
+      })}
+      {state.foods.map((f, i) => (
+        <View
+          key={`f-${i}`}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: cell,
+            height: cell,
+            padding: 1.5,
+            transform: [{ translateX: f.pos.x * cell }, { translateY: f.pos.y * cell }],
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              borderRadius: cell / 2,
+              backgroundColor: '#F4F8FF',
+              shadowColor: '#cfe0ff',
+              shadowOpacity: 0.9,
+              shadowRadius: 5,
+              shadowOffset: { width: 0, height: 0 },
+              elevation: 5,
+            }}
+          />
         </View>
-      </GestureDetector>
-
-      {state.status === 'playing' && (
-        <>
-          <Text style={styles.hint}>
-            {youAlive ? 'Swipe or use the D-pad — eat to grow, outlast everyone' : 'You are out — watch who wins'}
-          </Text>
-          <Dpad onPress={doTurn} />
-        </>
-      )}
-
-      <TouchScale style={styles.leaveBtn} onPress={onExit} accessibilityLabel="party-leave">
-        <Text style={styles.backText}>Leave</Text>
-      </TouchScale>
+      ))}
+      {children}
     </View>
   );
 }
@@ -327,6 +175,387 @@ const Dpad = memo(function Dpad({ onPress }: { onPress: (d: Direction) => void }
   );
 });
 
+function placeOf(state: PartyState, slot: number): number {
+  const pos = state.placements.indexOf(slot);
+  return pos < 0 ? 1 : state.snakes.length - pos;
+}
+
+function useBoardPx() {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  return Math.max(260, Math.floor(Math.min(width - 20, height - insets.top - insets.bottom - 240, 480)));
+}
+
+// ── ЛОКАЛЬНАЯ ПРАКТИКА (vs боты) ──
+function PracticeParty({ onExit }: { onExit: () => void }) {
+  const insets = useSafeAreaInsets();
+  const boardPx = useBoardPx();
+  const [count, setCount] = useState(5);
+  const [state, setState] = useState<PartyState | null>(null);
+  const overDone = useRef(false);
+  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
+
+  const start = useCallback((n: number) => {
+    overDone.current = false;
+    setState(partyNewMatch(n));
+  }, []);
+
+  const doTurn = useCallback((dir: Direction) => {
+    setState((s) => {
+      if (!s || s.status !== 'playing' || !s.alive[0]) return s;
+      hLight();
+      return partyTurn(s, 0, dir);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!state || state.status !== 'playing') return;
+    let id: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setState((prev) => {
+        if (!prev || prev.status !== 'playing') return prev;
+        let s = prev;
+        for (let i = 1; i < s.snakes.length; i++) if (s.alive[i]) s = partyTurn(s, i, partyBotDir(s, i));
+        return partyStep(s);
+      });
+      id = setTimeout(tick, TICK_MS);
+    };
+    id = setTimeout(tick, TICK_MS);
+    return () => clearTimeout(id);
+  }, [state?.status]);
+
+  useEffect(() => {
+    if (!state || state.status !== 'over' || overDone.current) return;
+    overDone.current = true;
+    const won = state.winner === 0;
+    playSfx(won ? 'win' : 'lose');
+    if (won) hSuccess();
+    else hError();
+  }, [state?.status, state?.winner]);
+
+  const swipe = useSwipe(doTurn);
+
+  if (!state) {
+    return (
+      <View style={[styles.container, pad]}>
+        <Text style={styles.title}>Practice</Text>
+        <Text style={styles.subtitle}>Last snake standing — vs bots (local)</Text>
+        <View style={styles.countRow}>
+          {COUNT_OPTIONS.map((n) => (
+            <TouchScale
+              key={n}
+              style={[styles.countBtn, count === n && styles.countBtnActive]}
+              onPress={() => setCount(n)}
+              accessibilityLabel={`count-${n}`}
+            >
+              <Text style={[styles.countText, count === n && styles.countTextActive]}>{n}</Text>
+            </TouchScale>
+          ))}
+        </View>
+        <Text style={styles.subtle}>players</Text>
+        <TouchScale style={styles.bigBtn} onPress={() => start(count)} accessibilityLabel="party-start">
+          <Text style={styles.bigBtnText}>Start</Text>
+        </TouchScale>
+        <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
+          <Text style={styles.backText}>Back</Text>
+        </TouchScale>
+      </View>
+    );
+  }
+
+  const aliveCount = state.alive.filter(Boolean).length;
+  return (
+    <MatchView
+      state={state}
+      mySlot={0}
+      boardPx={boardPx}
+      pad={pad}
+      aliveCount={aliveCount}
+      swipe={swipe}
+      onTurn={doTurn}
+      onAgain={() => start(count)}
+      onExit={onExit}
+    />
+  );
+}
+
+// ── СЕТЕВОЙ МАТЧ (команда по коду) ──
+function NetParty({ onExit }: { onExit: () => void }) {
+  const insets = useSafeAreaInsets();
+  const boardPx = useBoardPx();
+  const room = usePartyRoom();
+  const [name, setName] = useState('');
+  const [joinCode, setJoinCode] = useState('');
+  const overDone = useRef(false);
+  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
+
+  const handleExit = useCallback(() => {
+    room.leave();
+    onExit();
+  }, [room, onExit]);
+
+  const doTurn = useCallback(
+    (dir: Direction) => {
+      if (room.state?.status !== 'playing' || room.mySlot < 0 || !room.state.alive[room.mySlot]) return;
+      hLight();
+      room.turn(dir);
+    },
+    [room],
+  );
+
+  useEffect(() => {
+    if (room.state?.status !== 'over' || overDone.current) return;
+    overDone.current = true;
+    const won = room.state.winner === room.mySlot;
+    playSfx(won ? 'win' : 'lose');
+    if (won) hSuccess();
+    else hError();
+  }, [room.state?.status, room.state?.winner, room.mySlot]);
+
+  const swipe = useSwipe(doTurn);
+
+  // Форма: имя + создать/войти.
+  if (room.conn === 'idle' || room.conn === 'error') {
+    return (
+      <View style={[styles.container, pad]}>
+        <Text style={styles.title}>Team room</Text>
+        <Text style={styles.subtitle}>Gather your team (5–10) — winner doesn't work today</Text>
+        {room.conn === 'error' && <Text style={styles.errText}>Connection error — try again</Text>}
+        <TextInput
+          style={styles.nameInput}
+          value={name}
+          onChangeText={setName}
+          placeholder="Your name"
+          placeholderTextColor={C.textDim}
+          maxLength={20}
+          accessibilityLabel="party-name"
+        />
+        <TouchScale style={styles.bigBtn} onPress={() => room.createRoom(name)} accessibilityLabel="party-create">
+          <Text style={styles.bigBtnText}>Create team room</Text>
+        </TouchScale>
+        <View style={styles.joinRow}>
+          <TextInput
+            style={styles.codeInput}
+            value={joinCode}
+            onChangeText={(t) => setJoinCode(t.toUpperCase())}
+            placeholder="CODE"
+            placeholderTextColor={C.textDim}
+            autoCapitalize="characters"
+            maxLength={5}
+            accessibilityLabel="party-join-code"
+          />
+          <TouchScale
+            style={styles.joinBtn}
+            onPress={() => joinCode.length >= 4 && room.joinRoom(joinCode, name)}
+            accessibilityLabel="party-join"
+          >
+            <Text style={styles.altBtnText}>Join</Text>
+          </TouchScale>
+        </View>
+        <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
+          <Text style={styles.backText}>Back</Text>
+        </TouchScale>
+      </View>
+    );
+  }
+
+  // Лобби (в комнате, матч ещё не начат).
+  if (!room.state) {
+    const isHost = room.role === 'host';
+    const enough = room.players.length >= PARTY_MIN;
+    return (
+      <View style={[styles.container, pad]}>
+        <Text style={styles.title}>Team room</Text>
+        <View style={styles.codeBox}>
+          <Text style={styles.codeLabel}>Room code</Text>
+          <Text style={styles.codeValue} accessibilityLabel={`party-code-${room.code}`}>{room.code}</Text>
+          <Text style={styles.codeHint}>Share the code with your team</Text>
+          <Text style={styles.codeHint}>Keep this screen open until everyone joins</Text>
+        </View>
+        <Text style={styles.subtitle}>Players ({room.players.length}/10)</Text>
+        <View style={styles.playerList}>
+          {room.players.map((p) => (
+            <View key={p.id} style={styles.playerRow}>
+              <View style={[styles.playerDot, { backgroundColor: PARTY_COLORS[p.slot % PARTY_COLORS.length].head }]} />
+              <Text style={styles.playerName}>{p.name}</Text>
+            </View>
+          ))}
+        </View>
+        {isHost ? (
+          <TouchScale
+            style={[styles.bigBtn, !enough && styles.bigBtnDisabled]}
+            onPress={() => enough && room.startMatch()}
+            accessibilityLabel="party-start-match"
+          >
+            <Text style={styles.bigBtnText}>{enough ? 'Start match' : `Need ${PARTY_MIN}+ players`}</Text>
+          </TouchScale>
+        ) : (
+          <Text style={styles.status}>Waiting for host to start…</Text>
+        )}
+        <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="party-leave">
+          <Text style={styles.backText}>Leave</Text>
+        </TouchScale>
+      </View>
+    );
+  }
+
+  // Матч / финиш.
+  const aliveCount = room.state.alive.filter(Boolean).length;
+  return (
+    <MatchView
+      state={room.state}
+      mySlot={room.mySlot}
+      boardPx={boardPx}
+      pad={pad}
+      aliveCount={aliveCount}
+      swipe={swipe}
+      onTurn={doTurn}
+      onAgain={null}
+      onExit={handleExit}
+      waitHost={room.role !== 'host'}
+    />
+  );
+}
+
+// ── общий вид матча (поле + HUD + D-pad + оверлей финиша) ──
+function MatchView({
+  state,
+  mySlot,
+  boardPx,
+  pad,
+  aliveCount,
+  swipe,
+  onTurn,
+  onAgain,
+  onExit,
+  waitHost,
+}: {
+  state: PartyState;
+  mySlot: number;
+  boardPx: number;
+  pad: { paddingTop: number; paddingBottom: number };
+  aliveCount: number;
+  swipe: ReturnType<typeof Gesture.Pan>;
+  onTurn: (d: Direction) => void;
+  onAgain: (() => void) | null;
+  onExit: () => void;
+  waitHost?: boolean;
+}) {
+  const total = state.snakes.length;
+  const spectator = mySlot < 0;
+  const youAlive = !spectator && state.alive[mySlot];
+  const youPlace = spectator ? 0 : placeOf(state, mySlot);
+
+  return (
+    <View style={[styles.container, pad]}>
+      <View style={styles.hud}>
+        <View style={[styles.chip, { borderColor: spectator ? C.border : PARTY_COLORS[mySlot % PARTY_COLORS.length].head }]}>
+          <Text style={styles.chipLabel}>YOU</Text>
+          <Text style={styles.chipVal}>{spectator ? '👁' : youAlive ? 'alive' : `#${youPlace}`}</Text>
+        </View>
+        <View style={styles.chip}>
+          <Text style={styles.chipLabel}>ALIVE</Text>
+          <Text style={styles.chipVal}>{aliveCount}/{total}</Text>
+        </View>
+      </View>
+
+      <GestureDetector gesture={swipe}>
+        <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx}>
+          {state.status === 'over' && (
+            <View style={styles.overlay}>
+              {state.winner === mySlot && mySlot >= 0 && <Confetti />}
+              <FadePop style={styles.overlayInner}>
+                <Text style={styles.overlayTitle}>
+                  {state.winner === mySlot && mySlot >= 0
+                    ? "You don't work today! 🎉"
+                    : state.winner < 0
+                      ? 'Draw'
+                      : `Winner: Player ${state.winner + 1}`}
+                </Text>
+                {!spectator && state.winner !== mySlot && (
+                  <Text style={styles.overlaySub}>You placed #{youPlace} of {total}</Text>
+                )}
+                {onAgain ? (
+                  <TouchScale style={styles.bigBtn} onPress={onAgain} accessibilityLabel="party-again">
+                    <Text style={styles.bigBtnText}>Play again</Text>
+                  </TouchScale>
+                ) : waitHost ? (
+                  <Text style={styles.overlaySub}>Waiting for host…</Text>
+                ) : null}
+                <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
+                  <Text style={styles.backText}>Back</Text>
+                </TouchScale>
+              </FadePop>
+            </View>
+          )}
+        </PartyBoard>
+      </GestureDetector>
+
+      {state.status === 'playing' && (
+        <>
+          <Text style={styles.hint}>
+            {spectator
+              ? 'Spectating — match in progress'
+              : youAlive
+                ? 'Swipe or D-pad — eat to grow, outlast everyone'
+                : 'You are out — watch who wins'}
+          </Text>
+          {!spectator && youAlive && <Dpad onPress={onTurn} />}
+        </>
+      )}
+
+      <TouchScale style={styles.leaveBtn} onPress={onExit} accessibilityLabel="party-leave">
+        <Text style={styles.backText}>Leave</Text>
+      </TouchScale>
+    </View>
+  );
+}
+
+function useSwipe(onTurn: (d: Direction) => void) {
+  return useMemo(() => {
+    let committed = false;
+    return Gesture.Pan()
+      .onBegin(() => {
+        committed = false;
+      })
+      .onUpdate((e) => {
+        if (committed) return;
+        if (Math.abs(e.translationX) + Math.abs(e.translationY) < 12) return;
+        const dir = swipeToDirection(e.translationX, e.translationY);
+        if (dir) {
+          committed = true;
+          onTurn(dir);
+        }
+      });
+  }, [onTurn]);
+}
+
+// ── маршрутизатор режима ──
+export default function PartyGame({ onExit }: { onExit: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [screen, setScreen] = useState<'home' | 'practice' | 'net'>('home');
+  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
+
+  if (screen === 'practice') return <PracticeParty onExit={() => setScreen('home')} />;
+  if (screen === 'net') return <NetParty onExit={() => setScreen('home')} />;
+
+  return (
+    <View style={[styles.container, pad]}>
+      <Text style={styles.title}>Shake Work Off</Text>
+      <Text style={styles.subtitle}>Last snake standing — winner doesn't work today</Text>
+      <TouchScale style={styles.bigBtn} onPress={() => setScreen('net')} accessibilityLabel="party-team">
+        <Text style={styles.bigBtnText}>Team room (5–10)</Text>
+      </TouchScale>
+      <TouchScale style={styles.altBtn} onPress={() => setScreen('practice')} accessibilityLabel="party-practice">
+        <Text style={styles.altBtnText}>Practice vs bots</Text>
+      </TouchScale>
+      <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-exit">
+        <Text style={styles.backText}>Back</Text>
+      </TouchScale>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -339,7 +568,7 @@ const styles = StyleSheet.create({
   },
   title: { fontFamily: fonts.display, color: C.text, fontSize: 28, letterSpacing: 1 },
   subtitle: { fontFamily: fonts.body, color: C.textDim, fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
-  practiceNote: { fontFamily: fonts.bodyBold, color: C.accent, fontSize: 12 },
+  errText: { fontFamily: fonts.bodyBold, color: '#ff6b6b', fontSize: 13 },
   countRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   countBtn: {
     width: 56,
@@ -355,11 +584,49 @@ const styles = StyleSheet.create({
   countText: { fontFamily: fonts.num, color: C.textDim, fontSize: 22 },
   countTextActive: { color: C.text },
   subtle: { color: C.textDim, fontSize: 13 },
-  bigBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 40, alignItems: 'center' },
+  bigBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 40, alignItems: 'center', minWidth: 240 },
+  bigBtnDisabled: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
   bigBtnText: { fontFamily: fonts.display, color: '#06180E', fontSize: 17 },
+  altBtn: { backgroundColor: C.surface, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 28, borderWidth: 1, borderColor: C.border, alignItems: 'center', minWidth: 240 },
+  altBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 15 },
   backBtn: { paddingVertical: 8, paddingHorizontal: 20 },
   backText: { color: C.textDim, fontSize: 15 },
   leaveBtn: { paddingVertical: 6, paddingHorizontal: 20 },
+  nameInput: {
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    color: C.text,
+    fontSize: 18,
+    textAlign: 'center',
+    paddingVertical: 12,
+    width: 240,
+  },
+  joinRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  codeInput: {
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    color: C.text,
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 4,
+    textAlign: 'center',
+    paddingVertical: 10,
+    width: 150,
+  },
+  joinBtn: { backgroundColor: C.surface, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 22, borderWidth: 1, borderColor: C.border },
+  codeBox: { alignItems: 'center', gap: 6, backgroundColor: C.surface, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 36, borderWidth: 1, borderColor: C.border },
+  codeLabel: { color: C.textDim, fontSize: 13 },
+  codeValue: { fontFamily: fonts.num, color: '#7CF7D4', fontSize: 42, letterSpacing: 10 },
+  codeHint: { color: C.textDim, fontSize: 12 },
+  status: { color: C.text, fontSize: 16 },
+  playerList: { gap: 6, alignItems: 'flex-start', minHeight: 40 },
+  playerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  playerDot: { width: 12, height: 12, borderRadius: 6 },
+  playerName: { fontFamily: fonts.body, color: C.text, fontSize: 15 },
   hud: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   chip: {
     backgroundColor: C.surface,
