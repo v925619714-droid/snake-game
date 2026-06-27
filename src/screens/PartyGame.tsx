@@ -26,9 +26,12 @@ import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import { hLight, hSuccess, hError } from '../lib/settings';
 import { play as playSfx } from '../lib/sound';
+import { shareResult } from '../lib/share';
+import { EVENTS, track } from '../lib/analytics';
 
 const TICK_MS = 150;
 const COUNT_OPTIONS = [5, 6, 8, 10];
+const STAKE_TEMPLATES = ["doesn't work today", 'skips standup', 'no chores today', 'picks lunch'];
 
 const C = {
   bg: '#0B0F17',
@@ -197,6 +200,7 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
 
   const start = useCallback((n: number) => {
     overDone.current = false;
+    track(EVENTS.partyStart, { mode: 'practice', players: n });
     setState(partyNewMatch(n));
   }, []);
 
@@ -228,6 +232,7 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
     if (!state || state.status !== 'over' || overDone.current) return;
     overDone.current = true;
     const won = state.winner === 0;
+    track(EVENTS.partyEnd, { mode: 'practice', players: state.snakes.length, won, place: placeOf(state, 0) });
     playSfx(won ? 'win' : 'lose');
     if (won) hSuccess();
     else hError();
@@ -264,6 +269,7 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
   }
 
   const aliveCount = state.alive.filter(Boolean).length;
+  const names = state.snakes.map((_, i) => (i === 0 ? 'You' : `Bot ${i + 1}`));
   return (
     <MatchView
       state={state}
@@ -275,6 +281,9 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
       onTurn={doTurn}
       onAgain={() => start(count)}
       onExit={onExit}
+      names={names}
+      stake=""
+      mode="practice"
     />
   );
 }
@@ -286,8 +295,17 @@ function NetParty({ onExit }: { onExit: () => void }) {
   const room = usePartyRoom();
   const [name, setName] = useState('');
   const [joinCode, setJoinCode] = useState('');
+  const [stakeText, setStakeText] = useState('');
   const overDone = useRef(false);
+  const startTracked = useRef(false);
   const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
+
+  useEffect(() => {
+    if (room.conn === 'playing' && room.state && !startTracked.current) {
+      startTracked.current = true;
+      track(EVENTS.partyStart, { mode: 'net', players: room.state.snakes.length, role: room.role });
+    }
+  }, [room.conn, room.state, room.role]);
 
   const handleExit = useCallback(() => {
     room.leave();
@@ -307,6 +325,13 @@ function NetParty({ onExit }: { onExit: () => void }) {
     if (room.state?.status !== 'over' || overDone.current) return;
     overDone.current = true;
     const won = room.state.winner === room.mySlot;
+    track(EVENTS.partyEnd, {
+      mode: 'net',
+      players: room.state.snakes.length,
+      won,
+      place: room.mySlot >= 0 ? placeOf(room.state, room.mySlot) : 0,
+      role: room.role,
+    });
     playSfx(won ? 'win' : 'lose');
     if (won) hSuccess();
     else hError();
@@ -382,6 +407,41 @@ function NetParty({ onExit }: { onExit: () => void }) {
           ))}
         </View>
         {isHost ? (
+          <View style={styles.stakeBox}>
+            <Text style={styles.codeLabel}>On the line — winner's reward</Text>
+            <TextInput
+              style={styles.stakeInput}
+              value={stakeText}
+              onChangeText={(t) => {
+                setStakeText(t);
+                room.setStake(t);
+              }}
+              placeholder="e.g. doesn't work today"
+              placeholderTextColor={C.textDim}
+              maxLength={80}
+              accessibilityLabel="party-stake"
+            />
+            <View style={styles.stakeChips}>
+              {STAKE_TEMPLATES.map((t) => (
+                <TouchScale
+                  key={t}
+                  style={styles.stakeChip}
+                  onPress={() => {
+                    setStakeText(t);
+                    room.setStake(t);
+                  }}
+                  accessibilityLabel={`stake-${t}`}
+                >
+                  <Text style={styles.stakeChipText}>{t}</Text>
+                </TouchScale>
+              ))}
+            </View>
+          </View>
+        ) : room.stake ? (
+          <Text style={styles.stakePrize}>🏆 {room.stake}</Text>
+        ) : null}
+
+        {isHost ? (
           <TouchScale
             style={[styles.bigBtn, !enough && styles.bigBtnDisabled]}
             onPress={() => enough && room.startMatch()}
@@ -412,6 +472,9 @@ function NetParty({ onExit }: { onExit: () => void }) {
       onTurn={doTurn}
       onAgain={null}
       onExit={handleExit}
+      names={room.names}
+      stake={room.stake}
+      mode="net"
       waitHost={room.role !== 'host'}
     />
   );
@@ -428,6 +491,9 @@ function MatchView({
   onTurn,
   onAgain,
   onExit,
+  names,
+  stake,
+  mode,
   waitHost,
 }: {
   state: PartyState;
@@ -439,12 +505,37 @@ function MatchView({
   onTurn: (d: Direction) => void;
   onAgain: (() => void) | null;
   onExit: () => void;
+  names: string[];
+  stake: string;
+  mode: 'net' | 'practice';
   waitHost?: boolean;
 }) {
   const total = state.snakes.length;
   const spectator = mySlot < 0;
   const youAlive = !spectator && state.alive[mySlot];
   const youPlace = spectator ? 0 : placeOf(state, mySlot);
+  const won = mySlot >= 0 && state.winner === mySlot;
+  const finishOrder = [...state.placements].reverse(); // победитель — первым
+  const [shareNote, setShareNote] = useState('');
+  const nameOf = (slot: number) => names[slot] || `Player ${slot + 1}`;
+
+  const onShare = () => {
+    const winnerName = state.winner >= 0 ? nameOf(state.winner) : 'Nobody';
+    const msg = won
+      ? stake
+        ? `I won Shake Work Off — ${stake}! 🎉`
+        : `I won Shake Work Off — I don't work today! 🎉`
+      : stake
+        ? `${winnerName} won Shake Work Off — ${stake} 🐍`
+        : `${winnerName} won our Shake Work Off match 🐍`;
+    shareResult(msg).then((o) => {
+      track(EVENTS.share, { where: 'party', mode, won });
+      if (o === 'copied') {
+        setShareNote('Link copied!');
+        setTimeout(() => setShareNote(''), 1500);
+      }
+    });
+  };
 
   return (
     <View style={[styles.container, pad]}>
@@ -459,22 +550,39 @@ function MatchView({
         </View>
       </View>
 
+      {!!stake && state.status === 'playing' && (
+        <Text style={styles.stakeBar} numberOfLines={1}>🏆 On the line: {stake}</Text>
+      )}
+
       <GestureDetector gesture={swipe}>
         <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx}>
           {state.status === 'over' && (
             <View style={styles.overlay}>
-              {state.winner === mySlot && mySlot >= 0 && <Confetti />}
+              {won && <Confetti />}
               <FadePop style={styles.overlayInner}>
                 <Text style={styles.overlayTitle}>
-                  {state.winner === mySlot && mySlot >= 0
-                    ? "You don't work today! 🎉"
-                    : state.winner < 0
-                      ? 'Draw'
-                      : `Winner: Player ${state.winner + 1}`}
+                  {won ? "You don't work today! 🎉" : state.winner < 0 ? 'Draw' : `${nameOf(state.winner)} wins`}
                 </Text>
-                {!spectator && state.winner !== mySlot && (
+                {!!stake && <Text style={styles.stakePrize}>🏆 {stake}</Text>}
+                {!spectator && !won && state.winner >= 0 && (
                   <Text style={styles.overlaySub}>You placed #{youPlace} of {total}</Text>
                 )}
+                {finishOrder.length > 0 && (
+                  <View style={styles.finishList}>
+                    {finishOrder.slice(0, 5).map((slot, idx) => (
+                      <Text key={slot} style={styles.finishRow}>
+                        <Text style={{ color: PARTY_COLORS[slot % PARTY_COLORS.length].head }}>
+                          {idx === 0 ? '🏆 ' : `#${idx + 1} `}
+                        </Text>
+                        {nameOf(slot)}
+                        {slot === mySlot ? ' (you)' : ''}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+                <TouchScale style={styles.shareBtn} onPress={onShare} accessibilityLabel="party-share">
+                  <Text style={styles.shareBtnText}>{shareNote || 'Share result'}</Text>
+                </TouchScale>
                 {onAgain ? (
                   <TouchScale style={styles.bigBtn} onPress={onAgain} accessibilityLabel="party-again">
                     <Text style={styles.bigBtnText}>Play again</Text>
@@ -674,4 +782,25 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   dirBtnText: { color: C.text, fontSize: 24 },
+  stakeBar: { fontFamily: fonts.bodyBold, color: '#FFE680', fontSize: 13, textAlign: 'center', paddingHorizontal: 16 },
+  stakePrize: { fontFamily: fonts.bodyBold, color: '#FFE680', fontSize: 16, textAlign: 'center', paddingHorizontal: 16 },
+  finishList: { gap: 3, alignItems: 'center', marginTop: 2 },
+  finishRow: { fontFamily: fonts.body, color: C.text, fontSize: 14, textAlign: 'center' },
+  shareBtn: { paddingVertical: 9, paddingHorizontal: 22, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.surface },
+  shareBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 14 },
+  stakeBox: { alignItems: 'center', gap: 8, width: '100%', maxWidth: 320 },
+  stakeInput: {
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    color: C.text,
+    fontSize: 15,
+    textAlign: 'center',
+    paddingVertical: 10,
+    width: '100%',
+  },
+  stakeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
+  stakeChip: { backgroundColor: C.surface, borderRadius: 999, paddingVertical: 5, paddingHorizontal: 12, borderWidth: 1, borderColor: C.border },
+  stakeChipText: { fontFamily: fonts.body, color: C.textDim, fontSize: 12 },
 });

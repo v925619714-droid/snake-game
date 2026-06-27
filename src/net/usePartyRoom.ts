@@ -41,6 +41,8 @@ export function usePartyRoom() {
   const [players, setPlayers] = useState<PartyPlayer[]>([]);
   const [mySlot, setMySlot] = useState<number>(-1);
   const [state, setState] = useState<PartyState | null>(null);
+  const [stake, setStakeState] = useState(''); // что получает победитель («сегодня не работает»)
+  const [names, setNames] = useState<string[]>([]); // имена по слотам (для result-card)
 
   const chRef = useRef<RealtimeChannel | null>(null);
   const myIdRef = useRef('');
@@ -55,6 +57,8 @@ export function usePartyRoom() {
   const seqRef = useRef(0);
   const lastSeqRef = useRef(0);
   const inputRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stakeRef = useRef('');
+  const namesRef = useRef<string[]>([]);
 
   const apply = useCallback((s: PartyState | null) => {
     stateRef.current = s;
@@ -176,6 +180,12 @@ export function usePartyRoom() {
         const slot = roster.indexOf(myIdRef.current);
         mySlotRef.current = slot;
         setMySlot(slot);
+        const nm = (payload.names as string[]) ?? [];
+        namesRef.current = nm;
+        setNames(nm);
+        const stk = (payload.stake as string) ?? '';
+        stakeRef.current = stk;
+        setStakeState(stk);
         lastSeqRef.current = 0;
         apply(payload.state as PartyState);
         setConn('playing');
@@ -195,6 +205,13 @@ export function usePartyRoom() {
         if (roleRef.current !== 'host') return;
         const cur = stateRef.current;
         if (cur) apply(partyTurn(cur, payload.pid as number, payload.dir as Direction));
+      });
+
+      // Хост задал/сменил ставку в лобби — все обновляют отображение.
+      ch.on('broadcast', { event: 'pstake' }, ({ payload }) => {
+        const t = (payload.stake as string) ?? '';
+        stakeRef.current = t;
+        setStakeState(t);
       });
 
       // Поздний/переподключившийся клиент просит синхронизацию.
@@ -242,12 +259,30 @@ export function usePartyRoom() {
     const slot = roster.indexOf(myIdRef.current);
     mySlotRef.current = slot;
     setMySlot(slot);
+    const stPres = (chRef.current?.presenceState() ?? {}) as Record<string, Array<{ name?: string }>>;
+    const namesArr = roster.map((id) => stPres[id]?.[0]?.name ?? 'Player');
+    namesRef.current = namesArr;
+    setNames(namesArr);
     const init = partyNewMatch(roster.length);
     apply(init);
     setConn('playing');
-    chRef.current?.send({ type: 'broadcast', event: 'pstart', payload: { roster, state: init } });
+    chRef.current?.send({
+      type: 'broadcast',
+      event: 'pstart',
+      payload: { roster, names: namesArr, state: init, stake: stakeRef.current },
+    });
     startLoop();
   }, [apply, startLoop]);
+
+  // Хост задаёт ставку («сегодня не работает …») в лобби — рассылается всем.
+  const setStake = useCallback((text: string) => {
+    const t = text.slice(0, 80);
+    stakeRef.current = t;
+    setStakeState(t);
+    if (roleRef.current === 'host') {
+      chRef.current?.send({ type: 'broadcast', event: 'pstake', payload: { stake: t } });
+    }
+  }, []);
 
   const turn = useCallback((dir: Direction) => {
     const slot = mySlotRef.current;
@@ -273,6 +308,8 @@ export function usePartyRoom() {
     mySlotRef.current = -1;
     seqRef.current = 0;
     lastSeqRef.current = 0;
+    stakeRef.current = '';
+    namesRef.current = [];
     if (chRef.current) {
       supabase.removeChannel(chRef.current);
       chRef.current = null;
@@ -282,6 +319,8 @@ export function usePartyRoom() {
     setState(null);
     setPlayers([]);
     setMySlot(-1);
+    setStakeState('');
+    setNames([]);
     setRole(null);
     setCode('');
     setConn('idle');
@@ -296,5 +335,5 @@ export function usePartyRoom() {
     [],
   );
 
-  return { conn, role, code, players, mySlot, state, createRoom, joinRoom, startMatch, turn, leave };
+  return { conn, role, code, players, mySlot, state, stake, names, setStake, createRoom, joinRoom, startMatch, turn, leave };
 }
