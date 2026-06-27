@@ -13,6 +13,7 @@ import {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  PARTY_MAX,
   PARTY_MIN,
   type PartyState,
   partyNewMatch,
@@ -130,7 +131,13 @@ function PartyBoard({
                   },
                   isHead && mine && { borderWidth: 1.5, borderColor: '#fff' },
                 ]}
-              />
+              >
+                {isHead && mine && (
+                  <Text style={[styles.youBadge, { top: -cell * 0.8, left: -cell, width: cell * 3, textAlign: 'center' }]}>
+                    YOU
+                  </Text>
+                )}
+              </View>
             </View>
           );
         });
@@ -249,6 +256,7 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
   }, [state?.status, state?.winner]);
 
   const swipe = useSwipe(doTurn);
+  useKeyboardTurn(doTurn, !!state && state.status === 'playing');
 
   if (!state) {
     return (
@@ -371,6 +379,7 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
   }, [room.state?.status, room.state?.winner, room.mySlot]);
 
   const swipe = useSwipe(doTurn);
+  useKeyboardTurn(doTurn, room.state?.status === 'playing');
 
   // Форма: имя + создать/войти.
   if (room.conn === 'idle' || room.conn === 'error') {
@@ -438,14 +447,30 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
         <TouchScale style={styles.shareBtn} onPress={onShareInvite} accessibilityLabel="party-share-link">
           <Text style={styles.shareBtnText}>{inviteNote || '🔗 Share invite link'}</Text>
         </TouchScale>
-        <Text style={styles.subtitle}>Players ({room.players.length}/10)</Text>
+        <Text style={styles.subtitle}>Players ({room.players.length}/{PARTY_MAX})</Text>
         <View style={styles.playerList}>
-          {room.players.map((p) => (
-            <View key={p.id} style={styles.playerRow}>
-              <View style={[styles.playerDot, { backgroundColor: PARTY_COLORS[p.slot % PARTY_COLORS.length].head }]} />
-              <Text style={styles.playerName}>{p.name}</Text>
-            </View>
-          ))}
+          {Array.from({ length: PARTY_MAX }, (_, i) => {
+            const p = room.players.find((pl) => pl.slot === i);
+            const col = PARTY_COLORS[i % PARTY_COLORS.length];
+            const isYou = !!p && p.id === room.myId;
+            return (
+              <View key={i} style={styles.playerRow}>
+                <View
+                  style={[
+                    styles.playerDot,
+                    p
+                      ? { backgroundColor: col.head }
+                      : { backgroundColor: 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+                  ]}
+                />
+                <Text style={[styles.playerName, !p && styles.playerEmpty]}>
+                  {p ? p.name : 'Open'}
+                  {isYou ? ' (you)' : ''}
+                  {p && p.slot === 0 ? ' · host' : ''}
+                </Text>
+              </View>
+            );
+          })}
         </View>
         {isHost ? (
           <View style={styles.stakeBox}>
@@ -679,6 +704,27 @@ function useSwipe(onTurn: (d: Direction) => void) {
   }, [onTurn]);
 }
 
+// Управление стрелками/WASD в браузере (в party раньше не было — баг плейтеста И1).
+const KEY_DIR: Record<string, Direction> = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right',
+  ц: 'up', ы: 'down', ф: 'left', в: 'right', Ц: 'up', Ы: 'down', Ф: 'left', В: 'right',
+};
+function useKeyboardTurn(onTurn: (d: Direction) => void, enabled: boolean) {
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !enabled || typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      const dir = KEY_DIR[e.key];
+      if (dir) {
+        e.preventDefault();
+        onTurn(dir);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onTurn, enabled]);
+}
+
 // ── маршрутизатор режима ──
 export default function PartyGame({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string | null }) {
   const insets = useSafeAreaInsets();
@@ -776,6 +822,14 @@ const styles = StyleSheet.create({
   playerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   playerDot: { width: 12, height: 12, borderRadius: 6 },
   playerName: { fontFamily: fonts.body, color: C.text, fontSize: 15 },
+  playerEmpty: { color: C.textDim, opacity: 0.5 },
+  youBadge: {
+    position: 'absolute',
+    fontFamily: fonts.bodyBold,
+    color: '#fff',
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
   hud: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   chip: {
     backgroundColor: C.surface,

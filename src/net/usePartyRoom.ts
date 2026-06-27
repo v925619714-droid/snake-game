@@ -335,5 +335,5 @@ export function usePartyRoom() {
     [],
   );
 
-  return { conn, role, code, players, mySlot, state, stake, names, setStake, createRoom, joinRoom, startMatch, turn, leave };
+  return { conn, role, code, players, mySlot, myId: myIdRef.current, state, stake, names, setStake, createRoom, joinRoom, startMatch, turn, leave };
 }
