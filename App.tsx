@@ -50,6 +50,7 @@ import {
   type QuestsState,
 } from './src/game/quests';
 import DuelGame from './src/screens/DuelGame';
+import PartyGame from './src/screens/PartyGame';
 import { type Profile, loadProfile, saveProfile } from './src/lib/profile';
 import { type AuthUser, ensureSession } from './src/lib/auth';
 import Account from './src/screens/Account';
@@ -142,7 +143,7 @@ function AppInner() {
         : null,
     [],
   );
-  const [mode, setMode] = useState<'menu' | 'solo' | 'duel' | 'leaderboard' | 'account' | 'settings'>(initialRoom ? 'duel' : 'menu');
+  const [mode, setMode] = useState<'menu' | 'solo' | 'duel' | 'party' | 'leaderboard' | 'account' | 'settings'>(initialRoom ? 'duel' : 'menu');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [duelRanked, setDuelRanked] = useState(false);
@@ -615,6 +616,14 @@ function AppInner() {
     );
   }
 
+  if (mode === 'party') {
+    return (
+      <GestureHandlerRootView style={styles.root}>
+        <PartyGame onExit={() => setMode('menu')} />
+      </GestureHandlerRootView>
+    );
+  }
+
   const tier = tierFor(profile?.rating ?? 1000);
 
   // ── MENU (главное меню, без игрового поля; прокручивается → ничего не обрезается) ──
@@ -709,6 +718,19 @@ function AppInner() {
                 <Text style={styles.rankedText}>
                   Ranked · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tier.name}</Text> {profile?.rating ?? 1000}
                 </Text>
+              </LinearGradient>
+            </TouchScale>
+
+            <TouchScale
+              style={[styles.ctaWrap, styles.wide]}
+              onPress={() => {
+                track(EVENTS.matchmakingStart, { mode: 'party' });
+                setMode('party');
+              }}
+              accessibilityLabel="party"
+            >
+              <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.menuCta}>
+                <Text style={styles.menuCtaText}>Office Royale (beta)</Text>
               </LinearGradient>
             </TouchScale>
 
