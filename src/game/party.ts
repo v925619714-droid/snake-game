@@ -323,3 +323,27 @@ export function partyStep(state: PartyState, rng: () => number = Math.random): P
     causes,
   };
 }
+
+// Принудительно вывести слот из игры (дисконнект игрока). Матч продолжается, пока не
+// останется ≤1 живого. Используется сетевым контуром при уходе игрока/хоста.
+export function partyKill(state: PartyState, slot: number): PartyState {
+  if (state.status !== 'playing') return state;
+  if (slot < 0 || slot >= state.snakes.length || !state.alive[slot]) return state;
+  const alive = [...state.alive];
+  alive[slot] = false;
+  const placements = [...state.placements];
+  if (!placements.includes(slot)) placements.push(slot);
+
+  const aliveIdx: number[] = [];
+  for (let i = 0; i < alive.length; i++) if (alive[i]) aliveIdx.push(i);
+  let status: PartyStatus = state.status;
+  let winner = state.winner;
+  let finalPlacements = placements;
+  if (aliveIdx.length <= 1) {
+    status = 'over';
+    winner = aliveIdx.length === 1 ? aliveIdx[0] : -1;
+    finalPlacements = [...placements];
+    for (const i of aliveIdx) if (!finalPlacements.includes(i)) finalPlacements.push(i);
+  }
+  return { ...state, alive, placements: finalPlacements, status, winner };
+}

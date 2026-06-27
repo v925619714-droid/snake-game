@@ -4,6 +4,7 @@ import {
   MAX_PARTY_TURN_QUEUE,
   type PartyState,
   boardForCount,
+  partyKill,
   partyNewMatch,
   partyStep,
   partyTurn,
@@ -201,5 +202,30 @@ describe('partyStep — сжатие арены (shrink)', () => {
     const n = partyStep(s, rng0);
     expect(n.alive[0]).toBe(false);
     expect(n.causes[0]).toBe('wall');
+  });
+});
+
+describe('partyKill (дисконнект слота)', () => {
+  test('из 3 — убитый слот выбывает, матч продолжается', () => {
+    const s = mk({ snakes: [[{ x: 5, y: 5 }], [{ x: 10, y: 10 }], farB] });
+    const n = partyKill(s, 1);
+    expect(n.alive).toEqual([true, false, true]);
+    expect(n.status).toBe('playing');
+    expect(n.placements).toEqual([1]);
+  });
+
+  test('из 2 — убийство одного завершает матч победой второго', () => {
+    const s = mk({ snakes: [[{ x: 5, y: 5 }], [{ x: 10, y: 10 }]] });
+    const n = partyKill(s, 0);
+    expect(n.alive).toEqual([false, true]);
+    expect(n.status).toBe('over');
+    expect(n.winner).toBe(1);
+    expect(n.placements).toEqual([0, 1]);
+  });
+
+  test('повторное/невалидное убийство не меняет состояние', () => {
+    const s = mk({ snakes: [[{ x: 5, y: 5 }], [{ x: 10, y: 10 }], farB], alive: [false, true, true] });
+    expect(partyKill(s, 0)).toBe(s); // уже мёртв
+    expect(partyKill(s, 9)).toBe(s); // нет такого слота
   });
 });

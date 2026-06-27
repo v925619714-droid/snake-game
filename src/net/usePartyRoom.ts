@@ -10,7 +10,7 @@
 import { type RealtimeChannel } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Direction } from '../game/logic';
-import { type PartyState, PARTY_MIN, partyNewMatch, partyStep, partyTurn } from '../game/party';
+import { type PartyState, PARTY_MIN, partyKill, partyNewMatch, partyStep, partyTurn } from '../game/party';
 import { supabase } from '../lib/supabase';
 
 export type PartyConn = 'idle' | 'connecting' | 'lobby' | 'playing' | 'ended' | 'error';
@@ -108,17 +108,64 @@ export function usePartyRoom() {
       chRef.current = ch;
 
       ch.on('presence', { event: 'sync' }, () => {
-        // Во время идущего матча presence-перестройку слотов игнорируем (заморожено на старте).
-        if (startedRef.current) return;
         const st = ch.presenceState() as Record<string, Array<{ name?: string; at?: number }>>;
         const ids = Object.keys(st).sort();
         presenceIdsRef.current = ids;
-        setPlayers(ids.map((id, idx) => ({ id, name: st[id]?.[0]?.name ?? 'Player', slot: idx })));
-        const host = ids[0];
-        const r: PartyRole = myIdRef.current === host ? 'host' : 'guest';
-        roleRef.current = r;
-        setRole(r);
-        setConn('lobby');
+
+        if (!startedRef.current) {
+          // Лобби: список игроков, хост = минимальный id.
+          setPlayers(ids.map((id, idx) => ({ id, name: st[id]?.[0]?.name ?? 'Player', slot: idx })));
+          const host = ids[0];
+          const r: PartyRole = myIdRef.current === host ? 'host' : 'guest';
+          roleRef.current = r;
+          setRole(r);
+          setConn('lobby');
+          return;
+        }
+
+        // МАТЧ (Ф4 устойчивость): авторитет = присутствующий участник roster с наименьшим
+        // слотом. Если ушёл хост — авторитет переходит к следующему (переизбрание); ушедшие
+        // слоты убиваем, матч продолжается.
+        const roster = rosterRef.current;
+        if (roster.length === 0) return;
+        const present = new Set(ids);
+        let authSlot = -1;
+        for (let s = 0; s < roster.length; s++) {
+          if (present.has(roster[s])) {
+            authSlot = s;
+            break;
+          }
+        }
+        const amHost = authSlot >= 0 && roster[authSlot] === myIdRef.current;
+        if (amHost) {
+          if (roleRef.current !== 'host') {
+            // переизбрание: подхватываем авторитет и продолжаем цикл с последнего снапшота
+            roleRef.current = 'host';
+            setRole('host');
+            seqRef.current = lastSeqRef.current;
+            startLoop();
+          }
+          const cur = stateRef.current;
+          if (cur && cur.status === 'playing') {
+            let s2 = cur;
+            let changed = false;
+            for (let s = 0; s < roster.length; s++) {
+              if (!present.has(roster[s]) && s2.alive[s]) {
+                s2 = partyKill(s2, s);
+                changed = true;
+              }
+            }
+            if (changed) {
+              apply(s2);
+              broadcastState(s2);
+            }
+          }
+        } else if (roleRef.current === 'host') {
+          // потеряли авторитет (редкий случай) — прекращаем вести симуляцию
+          roleRef.current = 'guest';
+          setRole('guest');
+          stopLoop();
+        }
       });
 
       // Старт матча: roster (id→слот) + начальное состояние.
@@ -167,7 +214,7 @@ export function usePartyRoom() {
         }
       });
     },
-    [apply],
+    [apply, startLoop, stopLoop, broadcastState],
   );
 
   const createRoom = useCallback(
