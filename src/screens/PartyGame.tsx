@@ -26,12 +26,22 @@ import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import { hLight, hSuccess, hError } from '../lib/settings';
 import { play as playSfx } from '../lib/sound';
-import { shareResult } from '../lib/share';
+import { shareResult, GAME_URL } from '../lib/share';
 import { EVENTS, track } from '../lib/analytics';
 
 const TICK_MS = 150;
 const COUNT_OPTIONS = [5, 6, 8, 10];
 const STAKE_TEMPLATES = ["doesn't work today", 'skips standup', 'no chores today', 'picks lunch'];
+
+// Ссылка-инвайт в командную комнату: на web берём текущий origin (домен), иначе GAME_URL.
+function teamInviteUrl(code: string): string {
+  if (!code) return '';
+  const base =
+    Platform.OS === 'web' && typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}`
+      : GAME_URL;
+  return `${base}?party=${code}`;
+}
 
 const C = {
   bg: '#0B0F17',
@@ -289,16 +299,39 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
 }
 
 // ── СЕТЕВОЙ МАТЧ (команда по коду) ──
-function NetParty({ onExit }: { onExit: () => void }) {
+function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string | null }) {
   const insets = useSafeAreaInsets();
   const boardPx = useBoardPx();
   const room = usePartyRoom();
   const [name, setName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [stakeText, setStakeText] = useState('');
+  const [inviteNote, setInviteNote] = useState('');
   const overDone = useRef(false);
   const startTracked = useRef(false);
   const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
+
+  // Пришли по ссылке-инвайту (?party=КОД): подставляем код, чистим URL — игрок вводит имя и жмёт Join.
+  useEffect(() => {
+    if (autoJoin) {
+      setJoinCode(autoJoin.toUpperCase());
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, [autoJoin]);
+
+  const onShareInvite = useCallback(() => {
+    const url = teamInviteUrl(room.code);
+    if (!url) return;
+    shareResult("Join my team in Shake Work Off — winner skips work today! 🐍", url).then((o) => {
+      track(EVENTS.share, { where: 'party_invite', mode: 'net' });
+      if (o === 'copied') {
+        setInviteNote('Link copied!');
+        setTimeout(() => setInviteNote(''), 1500);
+      }
+    });
+  }, [room.code]);
 
   useEffect(() => {
     if (room.conn === 'playing' && room.state && !startTracked.current) {
@@ -345,6 +378,11 @@ function NetParty({ onExit }: { onExit: () => void }) {
       <View style={[styles.container, pad]}>
         <Text style={styles.title}>Team room</Text>
         <Text style={styles.subtitle}>Gather your team (5–10) — winner doesn't work today</Text>
+        {!!autoJoin && (
+          <Text style={[styles.subtle, { color: C.accent }]}>
+            You're invited to team {joinCode || autoJoin} — enter your name, then Join
+          </Text>
+        )}
         {room.conn === 'error' && <Text style={styles.errText}>Connection error — try again</Text>}
         <TextInput
           style={styles.nameInput}
@@ -394,9 +432,12 @@ function NetParty({ onExit }: { onExit: () => void }) {
         <View style={styles.codeBox}>
           <Text style={styles.codeLabel}>Room code</Text>
           <Text style={styles.codeValue} accessibilityLabel={`party-code-${room.code}`}>{room.code}</Text>
-          <Text style={styles.codeHint}>Share the code with your team</Text>
+          <Text style={styles.codeHint}>Share the code or link with your team</Text>
           <Text style={styles.codeHint}>Keep this screen open until everyone joins</Text>
         </View>
+        <TouchScale style={styles.shareBtn} onPress={onShareInvite} accessibilityLabel="party-share-link">
+          <Text style={styles.shareBtnText}>{inviteNote || '🔗 Share invite link'}</Text>
+        </TouchScale>
         <Text style={styles.subtitle}>Players ({room.players.length}/10)</Text>
         <View style={styles.playerList}>
           {room.players.map((p) => (
@@ -639,13 +680,13 @@ function useSwipe(onTurn: (d: Direction) => void) {
 }
 
 // ── маршрутизатор режима ──
-export default function PartyGame({ onExit }: { onExit: () => void }) {
+export default function PartyGame({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string | null }) {
   const insets = useSafeAreaInsets();
-  const [screen, setScreen] = useState<'home' | 'practice' | 'net'>('home');
+  const [screen, setScreen] = useState<'home' | 'practice' | 'net'>(autoJoin ? 'net' : 'home');
   const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
 
   if (screen === 'practice') return <PracticeParty onExit={() => setScreen('home')} />;
-  if (screen === 'net') return <NetParty onExit={() => setScreen('home')} />;
+  if (screen === 'net') return <NetParty onExit={() => setScreen('home')} autoJoin={autoJoin} />;
 
   return (
     <View style={[styles.container, pad]}>

@@ -143,7 +143,17 @@ function AppInner() {
         : null,
     [],
   );
-  const [mode, setMode] = useState<'menu' | 'solo' | 'duel' | 'party' | 'leaderboard' | 'account' | 'settings'>(initialRoom ? 'duel' : 'menu');
+  // Инвайт в командную комнату «Shake Work Off» по ссылке (?party=КОД) → авто-вход в Office Royale.
+  const initialParty = useMemo(
+    () =>
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('party')
+        : null,
+    [],
+  );
+  const [mode, setMode] = useState<'menu' | 'solo' | 'duel' | 'party' | 'leaderboard' | 'account' | 'settings'>(
+    initialRoom ? 'duel' : initialParty ? 'party' : 'menu',
+  );
   const [profile, setProfile] = useState<Profile | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [duelRanked, setDuelRanked] = useState(false);
@@ -619,7 +629,7 @@ function AppInner() {
   if (mode === 'party') {
     return (
       <GestureHandlerRootView style={styles.root}>
-        <PartyGame onExit={() => setMode('menu')} />
+        <PartyGame onExit={() => setMode('menu')} autoJoin={initialParty} />
       </GestureHandlerRootView>
     );
   }
