@@ -638,11 +638,11 @@ function AppInner() {
           >
             <View style={styles.header}>
               <Text style={styles.title}>
-                <Text style={{ color: COLORS.brand1 }}>CHROMA</Text>
-                <Text style={{ color: COLORS.text }}> </Text>
-                <Text style={{ color: COLORS.brand3 }}>COIL</Text>
+                <Text style={{ color: COLORS.brand1 }}>SHAKE </Text>
+                <Text style={{ color: COLORS.text }}>WORK </Text>
+                <Text style={{ color: COLORS.brand3 }}>OFF</Text>
               </Text>
-              <Text style={styles.subtitle}>COLOR DUEL ARENA</Text>
+              <Text style={styles.subtitle}>LAST SNAKE STANDING</Text>
               <TouchScale style={styles.acctChip} onPress={() => setMode('account')} accessibilityLabel="account">
                 <Text style={styles.acctText} numberOfLines={1}>
                   {authUser && !authUser.isAnon && authUser.email ? authUser.email : 'Guest · sign in to sync'}
@@ -863,7 +863,7 @@ function AppInner() {
                         style={styles.shareBtn}
                         onPress={() => {
                           const sc = state.score;
-                          shareResult(`I scored ${sc} in Chroma Coil 🐍 — can you beat it?`).then((o) => {
+                          shareResult(`I scored ${sc} in Shake Work Off 🐍 — can you beat it?`).then((o) => {
                             track(EVENTS.share, { where: 'solo', score: sc, outcome: o });
                             if (o === 'copied') {
                               setShareNote('Link copied!');
@@ -1114,7 +1114,7 @@ const styles = StyleSheet.create({
   menuGhostRow: { flexDirection: 'row', gap: 10 },
   ghostHalf: { flex: 1 },
   header: { alignItems: 'center', gap: 3 },
-  title: { fontFamily: fonts.display, fontSize: 30, letterSpacing: 3 },
+  title: { fontFamily: fonts.display, fontSize: 25, letterSpacing: 1.5, textAlign: 'center' },
   subtitle: { fontFamily: fonts.bodyBold, color: COLORS.textFaint, fontSize: 10, letterSpacing: 5 },
   acctChip: { marginTop: 4, backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderGlass, maxWidth: 260 },
   acctText: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 11 },

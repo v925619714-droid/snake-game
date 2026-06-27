@@ -31,7 +31,7 @@ const SLIDES: Slide[] = [
   {
     key: 'welcome',
     title: 'Two snakes. One survivor.',
-    body: 'Chroma Coil is a fast color duel. Outlast your rival to win the round — best of 3.',
+    body: 'Shake Work Off is a fast color duel. Outlast your rival to win the round — best of 3.',
     visual: () => (
       <View style={styles.vizRow}>
         <Dot color={C.redHead} glow />

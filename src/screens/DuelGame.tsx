@@ -223,7 +223,7 @@ export default function DuelGame({
     const url = inviteUrl(code, myId);
     if (!url) return;
     track(EVENTS.challengeCreated, { via: 'share' });
-    shareResult('Beat me 1v1 in Chroma Coil ⚡', url).then(() => {
+    shareResult('Beat me 1v1 in Shake Work Off ⚡', url).then(() => {
       if (typeof navigator !== 'undefined' && !(navigator as { share?: unknown }).share) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
@@ -299,7 +299,7 @@ export default function DuelGame({
           <View style={styles.lobby}>
             <Text style={styles.status}>Room not found</Text>
             <Text style={[styles.subtle, { textAlign: 'center' }]}>
-              A friend's room stays active only while they keep Chroma Coil open on the invite
+              A friend's room stays active only while they keep Shake Work Off open on the invite
               screen. Ask them to tap "Play with a friend" again — or:
             </Text>
             <TouchScale style={styles.bigBtn} onPress={() => { if (autoJoin) rejoin(autoJoin); }} accessibilityLabel="retry-join">
@@ -574,8 +574,8 @@ export default function DuelGame({
                   onPress={() => {
                     const won = duel.matchWinner === you;
                     const msg = won
-                      ? `I won ${duel.matchWins[you]}:${duel.matchWins[opp]} in Chroma Coil ⚡ — challenge me!`
-                      : `I just battled in Chroma Coil ⚡ — can you do better?`;
+                      ? `I won ${duel.matchWins[you]}:${duel.matchWins[opp]} in Shake Work Off ⚡ — challenge me!`
+                      : `I just battled in Shake Work Off ⚡ — can you do better?`;
                     shareResult(msg).then((o) => {
                       track(EVENTS.share, { where: 'duel', result: won ? 'win' : 'other', outcome: o });
                       if (o === 'copied') {
