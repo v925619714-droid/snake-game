@@ -10,7 +10,7 @@
 import { type RealtimeChannel } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type Direction } from '../game/logic';
-import { type PartyState, PARTY_MIN, partyKill, partyNewMatch, partyStep, partyTurn } from '../game/party';
+import { type PartyState, PARTY_MIN, partyKill, partyNewMatch, partyNextRound, partyStep, partyTurn } from '../game/party';
 import { supabase } from '../lib/supabase';
 
 export type PartyConn = 'idle' | 'connecting' | 'lobby' | 'playing' | 'ended' | 'error';
@@ -22,6 +22,7 @@ export interface PartyPlayer {
 }
 
 const TICK_MS = 150;
+const ROUND_BREAK_MS = 2600; // пауза между раундами best-of (показываем итог раунда)
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function randomCode(): string {
@@ -54,6 +55,8 @@ export function usePartyRoom() {
   const startedRef = useRef(false);
   const presenceIdsRef = useRef<string[]>([]); // текущие id в лобби (sorted)
   const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const breakRef = useRef<ReturnType<typeof setTimeout> | null>(null); // пауза между раундами
+  const startLoopRef = useRef<() => void>(() => {});
   const seqRef = useRef(0);
   const lastSeqRef = useRef(0);
   const inputRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,7 +66,7 @@ export function usePartyRoom() {
   const apply = useCallback((s: PartyState | null) => {
     stateRef.current = s;
     setState(s);
-    if (s && s.status === 'over') setConn('ended');
+    if (s && s.status === 'matchOver') setConn('ended');
   }, []);
 
   const stopLoop = useCallback(() => {
@@ -78,6 +81,21 @@ export function usePartyRoom() {
     chRef.current?.send({ type: 'broadcast', event: 'pstate', payload: { state: s, seq: seqRef.current } });
   }, []);
 
+  // Раунд закончился (best-of) — пауза, затем следующий раунд (возрождение всех).
+  const scheduleNextRound = useCallback(() => {
+    stopLoop();
+    if (breakRef.current) clearTimeout(breakRef.current);
+    breakRef.current = setTimeout(() => {
+      breakRef.current = null;
+      const cur = stateRef.current;
+      if (!cur || cur.status === 'matchOver') return;
+      const nr = partyNextRound(cur);
+      apply(nr);
+      broadcastState(nr);
+      startLoopRef.current();
+    }, ROUND_BREAK_MS);
+  }, [apply, broadcastState, stopLoop]);
+
   const startLoop = useCallback(() => {
     stopLoop();
     loopRef.current = setInterval(() => {
@@ -86,9 +104,11 @@ export function usePartyRoom() {
       const next = partyStep(cur);
       apply(next);
       broadcastState(next);
-      if (next.status !== 'playing') stopLoop();
+      if (next.status === 'roundOver') scheduleNextRound();
+      else if (next.status === 'matchOver') stopLoop();
     }, TICK_MS);
-  }, [apply, broadcastState, stopLoop]);
+  }, [apply, broadcastState, stopLoop, scheduleNextRound]);
+  startLoopRef.current = startLoop;
 
   const connect = useCallback(
     (asRole: PartyRole, roomCode: string, name: string) => {
@@ -143,11 +163,12 @@ export function usePartyRoom() {
         const amHost = authSlot >= 0 && roster[authSlot] === myIdRef.current;
         if (amHost) {
           if (roleRef.current !== 'host') {
-            // переизбрание: подхватываем авторитет и продолжаем цикл с последнего снапшота
+            // переизбрание: подхватываем авторитет и продолжаем с последнего снапшота
             roleRef.current = 'host';
             setRole('host');
             seqRef.current = lastSeqRef.current;
-            startLoop();
+            if (stateRef.current?.status === 'roundOver') scheduleNextRound();
+            else startLoop();
           }
           const cur = stateRef.current;
           if (cur && cur.status === 'playing') {
@@ -162,6 +183,7 @@ export function usePartyRoom() {
             if (changed) {
               apply(s2);
               broadcastState(s2);
+              if (s2.status === 'roundOver') scheduleNextRound(); // дисконнект завершил раунд
             }
           }
         } else if (roleRef.current === 'host') {
@@ -231,7 +253,7 @@ export function usePartyRoom() {
         }
       });
     },
-    [apply, startLoop, stopLoop, broadcastState],
+    [apply, startLoop, stopLoop, broadcastState, scheduleNextRound],
   );
 
   const createRoom = useCallback(
@@ -302,6 +324,7 @@ export function usePartyRoom() {
   const leave = useCallback(() => {
     stopLoop();
     if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
+    if (breakRef.current) clearTimeout(breakRef.current);
     startedRef.current = false;
     rosterRef.current = [];
     presenceIdsRef.current = [];
@@ -329,6 +352,7 @@ export function usePartyRoom() {
   useEffect(
     () => () => {
       if (loopRef.current) clearInterval(loopRef.current);
+      if (breakRef.current) clearTimeout(breakRef.current);
       if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
       if (chRef.current) supabase.removeChannel(chRef.current);
     },

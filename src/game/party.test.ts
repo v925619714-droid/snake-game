@@ -29,7 +29,10 @@ function mk(p: Partial<PartyState> & { snakes: Point[][] }): PartyState {
     board: p.board ?? 30,
     tick: p.tick ?? GRACE_TICKS,
     status: p.status ?? 'playing',
-    winner: p.winner ?? -1,
+    roundWinner: p.roundWinner ?? -1,
+    matchWinner: p.matchWinner ?? -1,
+    roundWins: p.roundWins ?? p.snakes.map(() => 0),
+    round: p.round ?? 1,
     placements: p.placements ?? [],
     causes: p.causes ?? p.snakes.map(() => null),
   };
@@ -51,7 +54,9 @@ describe('partyNewMatch', () => {
     expect(s.board).toBe(boardForCount(6)); // 35
     expect(s.foods).toHaveLength(3); // ceil(6/2)
     expect(s.status).toBe('playing');
-    expect(s.winner).toBe(-1);
+    expect(s.matchWinner).toBe(-1);
+    expect(s.roundWins).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(s.round).toBe(1);
   });
 
   test('boardForCount растёт с числом игроков', () => {
@@ -150,8 +155,8 @@ describe('partyStep — коллизии', () => {
     const n = partyStep(s, rng0);
     expect(n.alive).toEqual([false, false]);
     expect(n.causes).toEqual(['head_on', 'head_on']);
-    expect(n.status).toBe('over');
-    expect(n.winner).toBe(-1);
+    expect(n.status).toBe('roundOver');
+    expect(n.roundWinner).toBe(-1); // ничья в раунде
   });
 
   test('грейс на старте: лоб-в-лоб НЕ убивает (tick в пределах грейса)', () => {
@@ -182,7 +187,7 @@ describe('partyStep — коллизии', () => {
     const n = partyStep(s, rng0);
     expect(n.alive).toEqual([false, true, true]);
     expect(n.status).toBe('playing');
-    expect(n.winner).toBe(-1);
+    expect(n.roundWinner).toBe(-1);
     expect(n.placements).toEqual([0]);
   });
 });
@@ -196,13 +201,22 @@ describe('partyKill (дисконнект слота)', () => {
     expect(n.placements).toEqual([1]);
   });
 
-  test('из 2 — убийство одного завершает матч победой второго', () => {
+  test('из 2 — убийство одного завершает РАУНД победой второго (best-of)', () => {
     const s = mk({ snakes: [[{ x: 5, y: 5 }], [{ x: 10, y: 10 }]] });
     const n = partyKill(s, 0);
     expect(n.alive).toEqual([false, true]);
-    expect(n.status).toBe('over');
-    expect(n.winner).toBe(1);
+    expect(n.status).toBe('roundOver'); // 1 победа из PARTY_WINS_NEEDED → раунд, не матч
+    expect(n.roundWinner).toBe(1);
+    expect(n.roundWins).toEqual([0, 1]);
     expect(n.placements).toEqual([0, 1]);
+  });
+
+  test('вторая победа раунда → матч окончен (best-of, до двух)', () => {
+    const s = mk({ snakes: [[{ x: 5, y: 5 }], [{ x: 10, y: 10 }]], roundWins: [0, 1] });
+    const n = partyKill(s, 0); // у игрока 1 уже была 1 победа → станет 2 → матч
+    expect(n.status).toBe('matchOver');
+    expect(n.matchWinner).toBe(1);
+    expect(n.roundWins).toEqual([0, 2]);
   });
 
   test('повторное/невалидное убийство не меняет состояние', () => {

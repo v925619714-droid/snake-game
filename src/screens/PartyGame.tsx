@@ -15,8 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   PARTY_MAX,
   PARTY_MIN,
+  PARTY_WINS_NEEDED,
   type PartyState,
   partyNewMatch,
+  partyNextRound,
   partyStep,
   partyTurn,
 } from '../game/party';
@@ -31,6 +33,7 @@ import { shareResult, GAME_URL } from '../lib/share';
 import { EVENTS, track } from '../lib/analytics';
 
 const TICK_MS = 150;
+const ROUND_BREAK_MS = 2600; // пауза между раундами best-of (показываем итог раунда)
 const COUNT_OPTIONS = [5, 6, 8, 10];
 const STAKE_TEMPLATES = ["doesn't work today", 'skips standup', 'no chores today', 'picks lunch'];
 
@@ -68,15 +71,22 @@ const PARTY_COLORS = [
 ];
 
 // ── общий рендер поля ──
+function shortName(n: string | undefined): string {
+  const s = (n ?? '').trim();
+  return s.length > 7 ? s.slice(0, 7) : s || '—';
+}
+
 function PartyBoard({
   state,
   mySlot,
   boardPx,
+  names,
   children,
 }: {
   state: PartyState;
   mySlot: number;
   boardPx: number;
+  names: string[];
   children?: ReactNode;
 }) {
   const cell = boardPx / state.board;
@@ -118,9 +128,22 @@ function PartyBoard({
                   isHead && mine && { borderWidth: 1.5, borderColor: '#fff' },
                 ]}
               >
-                {isHead && mine && (
-                  <Text style={[styles.youBadge, { top: -cell * 0.8, left: -cell, width: cell * 3, textAlign: 'center' }]}>
-                    YOU
+                {isHead && (
+                  <Text
+                    style={[
+                      styles.youBadge,
+                      {
+                        top: -cell * 0.85,
+                        left: -cell * 1.5,
+                        width: cell * 4,
+                        textAlign: 'center',
+                        color: mine ? '#fff' : col.head,
+                      },
+                      mine && { fontWeight: '800' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {mine ? 'YOU' : shortName(names[si])}
                   </Text>
                 )}
               </View>
@@ -231,15 +254,24 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
     return () => clearTimeout(id);
   }, [state?.status]);
 
+  // Между раундами best-of (локально): пауза → возрождение всех (partyNextRound).
   useEffect(() => {
-    if (!state || state.status !== 'over' || overDone.current) return;
+    if (state?.status !== 'roundOver') return;
+    const id = setTimeout(() => {
+      setState((s) => (s && s.status === 'roundOver' ? partyNextRound(s) : s));
+    }, ROUND_BREAK_MS);
+    return () => clearTimeout(id);
+  }, [state?.status]);
+
+  useEffect(() => {
+    if (!state || state.status !== 'matchOver' || overDone.current) return;
     overDone.current = true;
-    const won = state.winner === 0;
-    track(EVENTS.partyEnd, { mode: 'practice', players: state.snakes.length, won, place: placeOf(state, 0) });
+    const won = state.matchWinner === 0;
+    track(EVENTS.partyEnd, { mode: 'practice', players: state.snakes.length, rounds: state.round, won, place: placeOf(state, 0) });
     playSfx(won ? 'win' : 'lose');
     if (won) hSuccess();
     else hError();
-  }, [state?.status, state?.winner]);
+  }, [state?.status, state?.matchWinner]);
 
   const swipe = useSwipe(doTurn);
   useKeyboardTurn(doTurn, !!state && state.status === 'playing');
@@ -349,12 +381,13 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
   );
 
   useEffect(() => {
-    if (room.state?.status !== 'over' || overDone.current) return;
+    if (room.state?.status !== 'matchOver' || overDone.current) return;
     overDone.current = true;
-    const won = room.state.winner === room.mySlot;
+    const won = room.state.matchWinner === room.mySlot;
     track(EVENTS.partyEnd, {
       mode: 'net',
       players: room.state.snakes.length,
+      rounds: room.state.round,
       won,
       place: room.mySlot >= 0 ? placeOf(room.state, room.mySlot) : 0,
       role: room.role,
@@ -362,7 +395,7 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
     playSfx(won ? 'win' : 'lose');
     if (won) hSuccess();
     else hError();
-  }, [room.state?.status, room.state?.winner, room.mySlot]);
+  }, [room.state?.status, room.state?.matchWinner, room.mySlot]);
 
   const swipe = useSwipe(doTurn);
   useKeyboardTurn(doTurn, room.state?.status === 'playing');
@@ -566,13 +599,14 @@ function MatchView({
   const spectator = mySlot < 0;
   const youAlive = !spectator && state.alive[mySlot];
   const youPlace = spectator ? 0 : placeOf(state, mySlot);
-  const won = mySlot >= 0 && state.winner === mySlot;
-  const finishOrder = [...state.placements].reverse(); // победитель — первым
+  const won = mySlot >= 0 && state.matchWinner === mySlot;
+  const finishOrder = [...state.placements].reverse(); // выживший раунда — первым
   const [shareNote, setShareNote] = useState('');
   const nameOf = (slot: number) => names[slot] || `Player ${slot + 1}`;
+  const myWins = mySlot >= 0 ? state.roundWins[mySlot] ?? 0 : 0;
 
   const onShare = () => {
-    const winnerName = state.winner >= 0 ? nameOf(state.winner) : 'Nobody';
+    const winnerName = state.matchWinner >= 0 ? nameOf(state.matchWinner) : 'Nobody';
     const msg = won
       ? stake
         ? `I won Shake Work Off — ${stake}! 🎉`
@@ -600,6 +634,10 @@ function MatchView({
           <Text style={styles.chipLabel}>ALIVE</Text>
           <Text style={styles.chipVal}>{aliveCount}/{total}</Text>
         </View>
+        <View style={styles.chip}>
+          <Text style={styles.chipLabel}>ROUND {state.round}</Text>
+          <Text style={styles.chipVal}>win {myWins}/{PARTY_WINS_NEEDED}</Text>
+        </View>
       </View>
 
       {!!stake && state.status === 'playing' && (
@@ -607,17 +645,35 @@ function MatchView({
       )}
 
       <GestureDetector gesture={swipe}>
-        <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx}>
-          {state.status === 'over' && (
+        <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx} names={names}>
+          {state.status === 'roundOver' && (
+            <View style={styles.overlay}>
+              <FadePop style={styles.overlayInner}>
+                <Text style={styles.overlayTitle}>
+                  {state.roundWinner < 0
+                    ? 'Round draw'
+                    : state.roundWinner === mySlot
+                      ? 'You won the round! 🟢'
+                      : `${nameOf(state.roundWinner)} won the round`}
+                </Text>
+                <Text style={styles.overlaySub}>
+                  First to {PARTY_WINS_NEEDED}
+                  {state.roundWinner >= 0 ? ` · ${nameOf(state.roundWinner)}: ${state.roundWins[state.roundWinner]}` : ''}
+                </Text>
+                <Text style={styles.overlaySub}>Next round…</Text>
+              </FadePop>
+            </View>
+          )}
+          {state.status === 'matchOver' && (
             <View style={styles.overlay}>
               {won && <Confetti />}
               <FadePop style={styles.overlayInner}>
                 <Text style={styles.overlayTitle}>
-                  {won ? "You don't work today! 🎉" : state.winner < 0 ? 'Draw' : `${nameOf(state.winner)} wins`}
+                  {won ? "You don't work today! 🎉" : state.matchWinner < 0 ? 'Draw' : `${nameOf(state.matchWinner)} wins`}
                 </Text>
                 {!!stake && <Text style={styles.stakePrize}>🏆 {stake}</Text>}
-                {!spectator && !won && state.winner >= 0 && (
-                  <Text style={styles.overlaySub}>You placed #{youPlace} of {total}</Text>
+                {!spectator && !won && state.matchWinner >= 0 && (
+                  <Text style={styles.overlaySub}>You placed #{youPlace} this round</Text>
                 )}
                 {finishOrder.length > 0 && (
                   <View style={styles.finishList}>

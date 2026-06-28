@@ -17,7 +17,10 @@ function mk(p: Partial<PartyState> & { snakes: Point[][] }): PartyState {
     board: p.board ?? 20,
     tick: p.tick ?? 0,
     status: p.status ?? 'playing',
-    winner: p.winner ?? -1,
+    roundWinner: p.roundWinner ?? -1,
+    matchWinner: p.matchWinner ?? -1,
+    roundWins: p.roundWins ?? p.snakes.map(() => 0),
+    round: p.round ?? 1,
     placements: p.placements ?? [],
     causes: p.causes ?? p.snakes.map(() => null),
   };
