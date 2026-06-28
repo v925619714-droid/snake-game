@@ -27,7 +27,6 @@ function mk(p: Partial<PartyState> & { snakes: Point[][] }): PartyState {
     foods: p.foods ?? [],
     scores: p.scores ?? p.snakes.map(() => 0),
     board: p.board ?? 30,
-    shrink: p.shrink ?? 0,
     tick: p.tick ?? GRACE_TICKS,
     status: p.status ?? 'playing',
     winner: p.winner ?? -1,
@@ -113,18 +112,16 @@ describe('partyStep — движение и еда', () => {
 });
 
 describe('partyStep — коллизии', () => {
-  test('стена убивает; остаётся один → победа последнего', () => {
+  test('сквозь стену (wrap): уход за левый край → выход справа, без смерти', () => {
     const s = mk({
       snakes: [[{ x: 0, y: 5 }, { x: 1, y: 5 }, { x: 2, y: 5 }], farB],
       dirs: ['left', 'up'],
       pending: ['left', 'up'],
     });
     const n = partyStep(s, rng0);
-    expect(n.alive[0]).toBe(false);
-    expect(n.causes[0]).toBe('wall');
-    expect(n.status).toBe('over');
-    expect(n.winner).toBe(1);
-    expect(n.placements).toEqual([0, 1]); // первый выбывший → … → победитель
+    expect(n.alive[0]).toBe(true);
+    expect(n.snakes[0][0]).toEqual({ x: 29, y: 5 }); // поле 30 → wrap на 29
+    expect(n.status).toBe('playing');
   });
 
   test('въезд в тело чужого → opponent', () => {
@@ -172,36 +169,21 @@ describe('partyStep — коллизии', () => {
     expect(n.status).toBe('playing');
   });
 
-  test('из 3 игроков один гибнет — матч продолжается', () => {
+  test('из 3 игроков один гибнет (въезд в чужого) — матч продолжается', () => {
     const s = mk({
       snakes: [
-        [{ x: 0, y: 5 }, { x: 1, y: 5 }], // врежется в стену слева
-        [{ x: 10, y: 10 }, { x: 10, y: 11 }],
+        [{ x: 5, y: 5 }, { x: 4, y: 5 }], // въедет в тело снейка 1
+        [{ x: 6, y: 5 }, { x: 6, y: 6 }],
         farB,
       ],
-      dirs: ['left', 'up', 'up'],
-      pending: ['left', 'up', 'up'],
+      dirs: ['right', 'up', 'up'],
+      pending: ['right', 'up', 'up'],
     });
     const n = partyStep(s, rng0);
     expect(n.alive).toEqual([false, true, true]);
     expect(n.status).toBe('playing');
     expect(n.winner).toBe(-1);
     expect(n.placements).toEqual([0]);
-  });
-});
-
-describe('partyStep — сжатие арены (shrink)', () => {
-  test('после сжатия голова в убранной зоне гибнет (wall)', () => {
-    // shrink=2 → играбельно x,y в [2 .. board-3]. Голова на y=2 идёт вверх → y=1 вне зоны.
-    const s = mk({
-      snakes: [[{ x: 10, y: 2 }, { x: 10, y: 3 }], [{ x: 20, y: 20 }, { x: 20, y: 21 }]],
-      dirs: ['up', 'right'],
-      pending: ['up', 'right'],
-      shrink: 2,
-    });
-    const n = partyStep(s, rng0);
-    expect(n.alive[0]).toBe(false);
-    expect(n.causes[0]).toBe('wall');
   });
 });
 

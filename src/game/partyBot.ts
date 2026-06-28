@@ -1,18 +1,20 @@
 // Простой безопасный бот для режима «Shake Work Off» (FFA, party.ts).
-// Не загоняет себя сразу в стену/тело, по возможности идёт к ближайшей еде. Без
-// flood-fill — этого достаточно для: (1) локальной практики/визуальной проверки,
-// (2) фолбэка при дисконнекте игрока, (3) добивки пустых слотов до минимума.
-// Чистая функция → тестируемо.
-import { type Direction, isOpposite, nextPoint } from './logic';
+// Стены СКВОЗНЫЕ (wrap-around) — край не смерть; бот избегает тел (своё/чужое) и по
+// возможности идёт к ближайшей еде. Чистая функция → тестируемо. Используется для:
+// (1) локальной практики, (2) фолбэка при дисконнекте, (3) добивки пустых слотов.
+import { type Direction, type Point, isOpposite, nextPoint } from './logic';
 import { type PartyState } from './party';
 
 const ALL: Direction[] = ['up', 'down', 'left', 'right'];
+
+function wrap(p: Point, board: number): Point {
+  return { x: (p.x + board) % board, y: (p.y + board) % board };
+}
 
 export function partyBotDir(state: PartyState, i: number, rng: () => number = Math.random): Direction {
   const cur = state.dirs[i];
   const head = state.snakes[i][0];
   const board = state.board;
-  const sh = state.shrink;
 
   // Занятые клетки — тела всех живых змей.
   const blocked = new Set<number>();
@@ -24,8 +26,7 @@ export function partyBotDir(state: PartyState, i: number, rng: () => number = Ma
   const safe: Direction[] = [];
   for (const d of ALL) {
     if (isOpposite(d, cur)) continue;
-    const h = nextPoint(head, d);
-    if (h.x < sh || h.x >= board - sh || h.y < sh || h.y >= board - sh) continue; // стена/зона
+    const h = wrap(nextPoint(head, d), board); // стены сквозные — край безопасен
     if (blocked.has(h.y * board + h.x)) continue; // тело (своё/чужое)
     safe.push(d);
   }
@@ -36,7 +37,7 @@ export function partyBotDir(state: PartyState, i: number, rng: () => number = Ma
     let best = safe[0];
     let bestDist = Infinity;
     for (const d of safe) {
-      const h = nextPoint(head, d);
+      const h = wrap(nextPoint(head, d), board);
       let md = Infinity;
       for (const f of state.foods) {
         const dist = Math.abs(f.pos.x - h.x) + Math.abs(f.pos.y - h.y);
@@ -58,7 +59,6 @@ export function hasSafeMove(state: PartyState, i: number): boolean {
   const cur = state.dirs[i];
   const head = state.snakes[i][0];
   const board = state.board;
-  const sh = state.shrink;
   const blocked = new Set<number>();
   for (let j = 0; j < state.snakes.length; j++) {
     if (!state.alive[j]) continue;
@@ -66,8 +66,7 @@ export function hasSafeMove(state: PartyState, i: number): boolean {
   }
   return ALL.some((d) => {
     if (isOpposite(d, cur)) return false;
-    const h = nextPoint(head, d);
-    if (h.x < sh || h.x >= board - sh || h.y < sh || h.y >= board - sh) return false;
+    const h = wrap(nextPoint(head, d), board);
     return !blocked.has(h.y * board + h.x);
   });
 }

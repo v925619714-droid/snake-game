@@ -107,14 +107,18 @@ describe('step', () => {
     expect(n.snake[0]).toEqual({ x: 6, y: 5 });
   });
 
-  test('столкновение со стеной завершает игру', () => {
+  test('сквозь стену (wrap): уход за правый край → появление слева, без смерти', () => {
     const s = playingState({
       snake: [
         { x: BOARD - 1, y: 5 },
         { x: BOARD - 2, y: 5 },
       ],
+      dir: 'right',
+      pendingDir: 'right',
     });
-    expect(step(s, rng0).status).toBe('over');
+    const n = step(s, rng0);
+    expect(n.status).toBe('playing');
+    expect(n.snake[0]).toEqual({ x: 0, y: 5 });
   });
 
   test('столкновение с собственным телом завершает игру', () => {

@@ -150,7 +150,7 @@ describe('duelStep — еда', () => {
 });
 
 describe('duelStep — столкновения', () => {
-  test('стена → раунд сопернику', () => {
+  test('сквозь стену (wrap): уезжает за правый край → появляется слева, без смерти', () => {
     const s = duel({
       snakes: [
         [{ x: 24, y: 5 }, { x: 23, y: 5 }],
@@ -158,8 +158,8 @@ describe('duelStep — столкновения', () => {
       ],
     });
     const n = duelStep(s, rng0);
-    expect(n.status).toBe('roundOver');
-    expect(n.roundWinner).toBe(1);
+    expect(n.status).toBe('playing');
+    expect(n.snakes[0][0]).toEqual({ x: 0, y: 5 });
   });
 
   test('въезд в тело соперника → раунд сопернику', () => {
@@ -193,18 +193,6 @@ describe('duelStep — столкновения', () => {
 });
 
 describe('duelStep — причины краша (causes)', () => {
-  test('стена → wall у врезавшегося', () => {
-    const s = duel({
-      snakes: [
-        [{ x: 24, y: 5 }, { x: 23, y: 5 }],
-        [{ x: 5, y: 20 }, { x: 4, y: 20 }],
-      ],
-    });
-    const n = duelStep(s, rng0);
-    expect(n.causes[0]).toBe('wall');
-    expect(n.causes[1]).toBeNull();
-  });
-
   test('чужой цвет → wrong_color', () => {
     const s = duel({ foods: [{ pos: { x: 6, y: 5 }, color: 1 }] });
     const n = duelStep(s, rng0);
@@ -294,8 +282,8 @@ describe('duelStep — счёт и матч', () => {
     expect(n.status).toBe('playing');
   });
 
-  test('вторая победа (через краш соперника) → матч окончен', () => {
-    // matchWins[1,0]; снейк1 врезается в стену → раунд игроку 0 → матч окончен
+  test('вторая победа (соперник умер) → матч окончен', () => {
+    // matchWins[1,0]; снейк1 уезжает за край → выходит на {0,20} = чужая еда → смерть → раунд игроку 0 → матч окончен
     const s = duel({
       matchWins: [1, 0],
       snakes: [
@@ -304,6 +292,7 @@ describe('duelStep — счёт и матч', () => {
       ],
       dirs: ['right', 'right'],
       pending: ['right', 'right'],
+      foods: [{ pos: { x: 0, y: 20 }, color: 0 }],
     });
     const n = duelStep(s, rng0);
     expect(n.roundWinner).toBe(0);

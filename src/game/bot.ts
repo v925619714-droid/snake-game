@@ -21,8 +21,9 @@ export const BOT_MISTAKE_RATE = 0;
 
 const ALL_DIRS: Direction[] = ['up', 'down', 'left', 'right'];
 
-function inBounds(p: Point): boolean {
-  return p.x >= 0 && p.x < DUEL_BOARD && p.y >= 0 && p.y < DUEL_BOARD;
+// Стены сквозные (wrap-around): край не смерть, координата оборачивается.
+function wrap(p: Point): Point {
+  return { x: (p.x + DUEL_BOARD) % DUEL_BOARD, y: (p.y + DUEL_BOARD) % DUEL_BOARD };
 }
 
 function manhattan(a: Point, b: Point): number {
@@ -48,8 +49,8 @@ function freeSpace(start: Point, blocked: Set<number>): number {
       { x: p.x, y: p.y + 1 },
       { x: p.x, y: p.y - 1 },
     ];
-    for (const n of ns) {
-      if (!inBounds(n)) continue;
+    for (const raw of ns) {
+      const n = wrap(raw);
       const k = keyOf(n);
       if (seen.has(k) || blocked.has(k)) continue;
       seen.add(k);
@@ -80,13 +81,12 @@ export function botDirection(
 
   // Предсказание следующей клетки головы соперника (для ухода от лобовых).
   const oppHead = state.snakes[opp][0];
-  const oppNext = nextPoint(oppHead, state.pending[opp] ?? state.dirs[opp]);
+  const oppNext = wrap(nextPoint(oppHead, state.pending[opp] ?? state.dirs[opp]));
 
   const cands: Cand[] = [];
   for (const d of ALL_DIRS) {
     if (isOpposite(d, curDir)) continue;
-    const h = nextPoint(head, d);
-    if (!inBounds(h)) continue; // стена
+    const h = wrap(nextPoint(head, d));
     const food = state.foods.find((f) => pointsEqual(f.pos, h));
     const foodActive = Boolean(food && (food.blink ?? 0) <= 0);
     if (food && foodActive && !food.boost && food.color !== me) continue; // живой чужой цвет = смерть (мигающий/буст безопасны)

@@ -15,7 +15,6 @@ function mk(p: Partial<PartyState> & { snakes: Point[][] }): PartyState {
     foods: p.foods ?? [],
     scores: p.scores ?? p.snakes.map(() => 0),
     board: p.board ?? 20,
-    shrink: p.shrink ?? 0,
     tick: p.tick ?? 0,
     status: p.status ?? 'playing',
     winner: p.winner ?? -1,
@@ -32,13 +31,10 @@ describe('partyBotDir', () => {
     expect(partyBotDir(s, 0, noMistake)).not.toBe('left');
   });
 
-  test('не едет в стену (зону)', () => {
-    // голова у левой стены, едет влево — бот должен свернуть
-    const s = mk({ snakes: [[{ x: 0, y: 5 }, { x: 1, y: 5 }]], dirs: ['left'] });
-    const d = partyBotDir(s, 0, noMistake);
-    expect(d).not.toBe('left');
-    // выбранное направление не выводит за зону
-    expect(['up', 'down']).toContain(d);
+  test('край безопасен (wrap): идёт сквозь край к еде на другой стороне', () => {
+    // голова у левого края; еда у правого края — через wrap ближе всего влево
+    const s = mk({ snakes: [[{ x: 0, y: 5 }, { x: 1, y: 5 }]], dirs: ['left'], foods: [{ pos: { x: 19, y: 5 } }] });
+    expect(partyBotDir(s, 0, noMistake)).toBe('left');
   });
 
   test('идёт к ближайшей еде', () => {

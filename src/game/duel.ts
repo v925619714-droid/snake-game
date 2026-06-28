@@ -59,8 +59,9 @@ function key(p: Point): number {
   return p.y * DUEL_BOARD + p.x;
 }
 
-function inBounds(p: Point): boolean {
-  return p.x >= 0 && p.x < DUEL_BOARD && p.y >= 0 && p.y < DUEL_BOARD;
+// Стены СКВОЗНЫЕ (wrap-around): координата за краем оборачивается на противоположную.
+function wrap(p: Point): Point {
+  return { x: (p.x + DUEL_BOARD) % DUEL_BOARD, y: (p.y + DUEL_BOARD) % DUEL_BOARD };
 }
 
 // Случайная свободная клетка; по возможности не ближе minDist (манхэттен) к head.
@@ -188,8 +189,8 @@ function advance(
 ): { ended?: DuelState; state?: DuelState; picked: [boolean, boolean] } {
   const snakes = state.snakes;
   const heads = [
-    moving[0] ? nextPoint(snakes[0][0], state.pending[0]) : snakes[0][0],
-    moving[1] ? nextPoint(snakes[1][0], state.pending[1]) : snakes[1][0],
+    moving[0] ? wrap(nextPoint(snakes[0][0], state.pending[0])) : snakes[0][0],
+    moving[1] ? wrap(nextPoint(snakes[1][0], state.pending[1])) : snakes[1][0],
   ];
   // только «живая» (не мигающая) еда под головой
   const hf = heads.map((h, i) =>
@@ -203,11 +204,6 @@ function advance(
   for (let i = 0; i < 2; i++) {
     if (!moving[i]) continue;
     const h = heads[i];
-    if (!inBounds(h)) {
-      crashed[i] = true;
-      causes[i] = 'wall';
-      continue;
-    }
     const f = hf[i];
     if (f && f.boost) {
       picked[i] = true; // буст-еда: не растит, не смертельна

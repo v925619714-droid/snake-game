@@ -80,22 +80,8 @@ function PartyBoard({
   children?: ReactNode;
 }) {
   const cell = boardPx / state.board;
-  const z = state.shrink;
   return (
     <View style={[styles.boardWrap, { width: boardPx, height: boardPx }]}>
-      {z > 0 && (
-        <View
-          style={{
-            position: 'absolute',
-            left: z * cell,
-            top: z * cell,
-            width: (state.board - 2 * z) * cell,
-            height: (state.board - 2 * z) * cell,
-            borderWidth: 1,
-            borderColor: 'rgba(255,90,90,0.5)',
-          }}
-        />
-      )}
       {state.snakes.map((snake, si) => {
         if (!state.alive[si]) return null;
         const col = PARTY_COLORS[si % PARTY_COLORS.length];

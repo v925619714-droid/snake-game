@@ -106,12 +106,11 @@ export function step(state: GameState, rng: () => number = Math.random): GameSta
   const queue = state.queue.length ? state.queue.slice(1) : state.queue;
   const d = DELTAS[dir];
   const head = state.snake[0];
-  const next: Point = { x: head.x + d.x, y: head.y + d.y };
-
-  // Столкновение со стеной.
-  if (next.x < 0 || next.x >= BOARD || next.y < 0 || next.y >= BOARD) {
-    return { ...state, dir, pendingDir: dir, queue, status: 'over' };
-  }
+  // Стены СКВОЗНЫЕ (wrap-around): уходишь за край — выходишь с противоположной стороны.
+  const next: Point = {
+    x: (head.x + d.x + BOARD) % BOARD,
+    y: (head.y + d.y + BOARD) % BOARD,
+  };
 
   const willEat = pointsEqual(next, state.food);
   // Хвост уедет, если не едим, — значит его кончик не считаем препятствием.
