@@ -8,6 +8,7 @@ export type Status = 'ready' | 'playing' | 'over';
 export interface GameState {
   snake: Point[]; // голова — индекс 0
   food: Point;
+  fatFood?: Point; // жирная еда (золотая): +FAT_GROWTH роста; появляется периодически
   dir: Direction; // текущее направление движения
   pendingDir: Direction; // направление, применяемое на следующем шаге
   queue: Direction[]; // буфер поворотов (≤ MAX_TURN_QUEUE), применяется по одному за шаг
@@ -22,6 +23,11 @@ export const BOARD = 17;
 // углом (например up→left) двумя касаниями подряд — оба сработают на двух тиках, и
 // быстрый ввод между тиками не теряется. Это ключ к отзывчивости управления.
 export const MAX_TURN_QUEUE = 2;
+
+// Жирная еда (золотая): даёт +FAT_GROWTH сегментов. Появляется со small-шансом за шаг,
+// если её сейчас нет на поле (вместо «ускорителя» — единая механика во всех режимах).
+export const FAT_GROWTH = 3;
+const FAT_CHANCE = 0.03;
 
 const DELTAS: Record<Direction, Point> = {
   up: { x: 0, y: -1 },
@@ -112,25 +118,33 @@ export function step(state: GameState, rng: () => number = Math.random): GameSta
     y: (head.y + d.y + BOARD) % BOARD,
   };
 
+  const willEatFat = !!state.fatFood && pointsEqual(next, state.fatFood);
   const willEat = pointsEqual(next, state.food);
-  // Хвост уедет, если не едим, — значит его кончик не считаем препятствием.
-  const body = willEat ? state.snake : state.snake.slice(0, -1);
+  const grow = willEat || willEatFat;
+  // Хвост уедет, если не растём, — значит его кончик не считаем препятствием.
+  const body = grow ? state.snake : state.snake.slice(0, -1);
   if (body.some((p) => pointsEqual(p, next))) {
     return { ...state, dir, pendingDir: dir, queue, status: 'over' };
   }
 
   const newSnake = [next, ...state.snake];
+  let score = state.score;
+  let food = state.food;
+  let fatFood = state.fatFood;
   if (willEat) {
-    return {
-      ...state,
-      snake: newSnake,
-      dir,
-      pendingDir: dir,
-      queue,
-      score: state.score + 1,
-      food: spawnFood(newSnake, rng),
-    };
+    score += 1;
+    food = spawnFood(newSnake, rng);
+  } else if (willEatFat) {
+    score += FAT_GROWTH;
+    fatFood = undefined;
+    const tail = state.snake[state.snake.length - 1];
+    for (let k = 1; k < FAT_GROWTH; k++) newSnake.push({ ...tail });
+  } else {
+    newSnake.pop();
   }
-  newSnake.pop();
-  return { ...state, snake: newSnake, dir, pendingDir: dir, queue };
+  // Периодически порождаем жирную еду, если её нет (не на змейке и не на обычной еде).
+  if (!fatFood && rng() < FAT_CHANCE) {
+    fatFood = spawnFood([...newSnake, food], rng);
+  }
+  return { ...state, snake: newSnake, dir, pendingDir: dir, queue, score, food, fatFood };
 }

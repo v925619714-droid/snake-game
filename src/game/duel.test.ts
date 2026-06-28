@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 import {
-  BOOST_TICKS,
+  FAT_GROWTH,
   DUEL_BOARD,
   type DuelState,
   FOOD_MIN_HEAD_DIST,
@@ -30,7 +30,6 @@ function duel(p: Partial<DuelState> = {}): DuelState {
     roundWinner: -1,
     matchWinner: -1,
     causes: [null, null],
-    boosts: [0, 0],
     ...p,
   };
 }
@@ -247,30 +246,21 @@ describe('duelStep — причины краша (causes)', () => {
   });
 });
 
-describe('duelStep — буст-еда (скорость)', () => {
-  test('съел буст-еду → ускорение, без роста, не смертельно', () => {
-    const s = duel({ foods: [{ pos: { x: 6, y: 5 }, color: 0, boost: true }] });
+describe('duelStep — жирная еда (+рост)', () => {
+  test('съел жирную еду → вырос на FAT_GROWTH, не смертельна', () => {
+    const s = duel({ foods: [{ pos: { x: 6, y: 5 }, color: 0, fat: true }] });
     const n = duelStep(s, rng0);
     expect(n.status).toBe('playing');
-    expect(n.boosts[0]).toBe(BOOST_TICKS);
-    expect(n.snakes[0]).toHaveLength(3); // буст-еда не растит
-    expect(n.foods.some((f) => f.boost && f.pos.x === 6 && f.pos.y === 5)).toBe(false); // съедена
+    expect(n.snakes[0]).toHaveLength(3 + FAT_GROWTH); // выросла на N сегментов
+    expect(n.foods.some((f) => f.fat && f.pos.x === 6 && f.pos.y === 5)).toBe(false); // съедена
   });
 
-  test('буст-еда чужого «цвета» не убивает (нейтральна)', () => {
-    // snake1 (color 1) едет на буст-еду (хранится с color 0) — не должно быть wrong_color
-    const s = duel({ foods: [{ pos: { x: 6, y: 20 }, color: 0, boost: true }] });
+  test('жирная еда нейтральна — чужой «цвет» не убивает', () => {
+    // snake1 (color 1) едет на жирную еду (хранится с color 0) — не wrong_color
+    const s = duel({ foods: [{ pos: { x: 6, y: 20 }, color: 0, fat: true }] });
     const n = duelStep(s, rng0);
     expect(n.status).toBe('playing');
-    expect(n.boosts[1]).toBe(BOOST_TICKS);
-  });
-
-  test('забустенная змейка двигается 2 клетки за тик', () => {
-    const s = duel({ boosts: [5, 0] });
-    const n = duelStep(s, rng0);
-    expect(n.snakes[0][0]).toEqual({ x: 7, y: 5 }); // 5→7 (2 клетки вправо)
-    expect(n.snakes[1][0]).toEqual({ x: 6, y: 20 }); // обычная — 1 клетка
-    expect(n.boosts[0]).toBe(4); // таймер тикнул
+    expect(n.snakes[1]).toHaveLength(3 + FAT_GROWTH);
   });
 });
 

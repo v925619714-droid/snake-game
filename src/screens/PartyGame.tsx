@@ -145,12 +145,12 @@ function PartyBoard({
             style={{
               flex: 1,
               borderRadius: cell / 2,
-              backgroundColor: '#F4F8FF',
-              shadowColor: '#cfe0ff',
-              shadowOpacity: 0.9,
-              shadowRadius: 5,
+              backgroundColor: f.fat ? '#FFE680' : '#F4F8FF',
+              shadowColor: f.fat ? '#FFD75E' : '#cfe0ff',
+              shadowOpacity: f.fat ? 1 : 0.9,
+              shadowRadius: f.fat ? 7 : 5,
               shadowOffset: { width: 0, height: 0 },
-              elevation: 5,
+              elevation: f.fat ? 7 : 5,
             }}
           />
         </View>

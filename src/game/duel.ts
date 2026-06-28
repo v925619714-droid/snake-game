@@ -16,11 +16,10 @@ export const FOOD_MIN_HEAD_DIST = 6;
 // проехать без последствий (ни смерти об чужую, ни съедания), потом становится живой.
 // ~3с при обычном темпе 150мс/тик (~2с в бот-матчах 100мс).
 export const FOOD_BLINK_TICKS = 20;
-// Буст-еда: периодически появляется нейтральная «еда скорости». Кто съел — ускоряется
-// (двигается 2 клетки за тик) на BOOST_TICKS тиков (~5–10с в зависимости от темпа).
-// Даёт обогнать соперника, быстрее собрать свою еду/вырасти и подрезать его.
-export const BOOST_TICKS = 50;
-export const BOOST_FOOD_EVERY = 60; // как часто (тиков) спавнить буст-еду, если её нет
+// Жирная еда: периодически появляется нейтральная ЗОЛОТАЯ еда. Кто съел — сразу вырастает
+// на FAT_GROWTH сегментов (вместо прежнего ускорителя). Доступна любому игроку.
+export const FAT_GROWTH = 3;
+export const FAT_FOOD_EVERY = 60; // как часто (тиков) спавнить жирную еду, если её нет
 // Буфер поворотов на игрока (как в соло-режиме): делает ввод отзывчивым на быстром
 // темпе — до 2 заказанных поворотов, применяются по одному за тик.
 export const MAX_DUEL_TURN_QUEUE = 2;
@@ -35,7 +34,7 @@ export interface Food {
   pos: Point;
   color: 0 | 1;
   blink?: number; // тиков инертности осталось (мигает); undefined/0 = живая еда
-  boost?: boolean; // буст-еда (нейтральная): даёт скорость, не растит, не смертельна
+  fat?: boolean; // жирная еда (нейтральная, золотая): +FAT_GROWTH роста любому, не смертельна
 }
 
 export interface DuelState {
@@ -52,7 +51,6 @@ export interface DuelState {
   roundWinner: number; // -1 draw, 0/1 winner
   matchWinner: number; // -1 none, 0/1
   causes: [CrashCause | null, CrashCause | null]; // причина краша по игрокам в последнем раунде
-  boosts: [number, number]; // тиков ускорения осталось по игрокам (>0 = 2 клетки/тик)
 }
 
 function key(p: Point): number {
@@ -97,7 +95,7 @@ export function ensureFoods(
 
   for (const color of [0, 1] as const) {
     const head = snakes[color][0];
-    let have = result.filter((f) => f.color === color && !f.boost).length;
+    let have = result.filter((f) => f.color === color && !f.fat).length;
     while (have < FOOD_PER_COLOR) {
       const cell = freeCell(occupied, head, FOOD_MIN_HEAD_DIST, rng);
       if (!cell) break;
@@ -135,7 +133,6 @@ function freshRound(round: number, matchWins: [number, number], rng: () => numbe
     roundWinner: -1,
     matchWinner: -1,
     causes: [null, null],
-    boosts: [0, 0],
   };
 }
 
@@ -186,7 +183,7 @@ function advance(
   state: DuelState,
   moving: [boolean, boolean],
   rng: () => number,
-): { ended?: DuelState; state?: DuelState; picked: [boolean, boolean] } {
+): { ended?: DuelState; state?: DuelState } {
   const snakes = state.snakes;
   const heads = [
     moving[0] ? wrap(nextPoint(snakes[0][0], state.pending[0])) : snakes[0][0],
@@ -196,8 +193,7 @@ function advance(
   const hf = heads.map((h, i) =>
     moving[i] ? state.foods.find((f) => pointsEqual(f.pos, h) && (f.blink ?? 0) <= 0) : undefined,
   );
-  const picked: [boolean, boolean] = [false, false];
-  const grow = [false, false];
+  const growBy = [0, 0]; // на сколько сегментов вырастет змейка (0 = просто едет)
   const crashed = [false, false];
   const causes: [CrashCause | null, CrashCause | null] = [null, null];
 
@@ -205,16 +201,16 @@ function advance(
     if (!moving[i]) continue;
     const h = heads[i];
     const f = hf[i];
-    if (f && f.boost) {
-      picked[i] = true; // буст-еда: не растит, не смертельна
+    if (f && f.fat) {
+      growBy[i] = FAT_GROWTH; // жирная еда: нейтральная, +N роста
     } else if (f && f.color !== i) {
       crashed[i] = true;
       causes[i] = 'wrong_color';
       continue;
     } else if (f && f.color === i) {
-      grow[i] = true;
+      growBy[i] = 1;
     }
-    const ownBody = grow[i] ? snakes[i] : snakes[i].slice(0, -1);
+    const ownBody = growBy[i] > 0 ? snakes[i] : snakes[i].slice(0, -1);
     if (ownBody.some((p) => pointsEqual(p, h))) {
       crashed[i] = true;
       causes[i] = 'self';
@@ -234,36 +230,37 @@ function advance(
 
   if (crashed[0] || crashed[1]) {
     const winner = crashed[0] && crashed[1] ? -1 : crashed[0] ? 1 : 0;
-    return { ended: endRound(state, {}, winner, causes), picked };
+    return { ended: endRound(state, {}, winner, causes) };
   }
 
   const newSnakes = [0, 1].map((i) => {
     if (!moving[i]) return snakes[i];
     const ns = [heads[i], ...snakes[i]];
-    if (!grow[i]) ns.pop();
+    if (growBy[i] === 0) ns.pop();
+    else if (growBy[i] > 1) {
+      const tail = snakes[i][snakes[i].length - 1];
+      for (let k = 1; k < growBy[i]; k++) ns.push({ ...tail });
+    }
     return ns;
   });
   const roundScore: [number, number] = [
-    state.roundScore[0] + (grow[0] ? 1 : 0),
-    state.roundScore[1] + (grow[1] ? 1 : 0),
+    state.roundScore[0] + growBy[0],
+    state.roundScore[1] + growBy[1],
   ];
   const eatenKeys = new Set<number>();
   for (let i = 0; i < 2; i++) {
-    if (moving[i] && hf[i] && (grow[i] || picked[i])) eatenKeys.add(key(hf[i]!.pos));
+    if (moving[i] && hf[i] && growBy[i] > 0) eatenKeys.add(key(hf[i]!.pos));
   }
   const foods = state.foods.filter((f) => !eatenKeys.has(key(f.pos)));
-  return { state: { ...state, snakes: newSnakes, roundScore, foods }, picked };
+  return { state: { ...state, snakes: newSnakes, roundScore, foods } };
 }
 
 export function duelStep(state: DuelState, rng: () => number = Math.random): DuelState {
   if (state.status !== 'playing') return state;
 
   const tick = state.tick + 1;
-  const startBoosts = state.boosts ?? [0, 0];
-  let picked: [boolean, boolean] = [false, false];
 
   // Применяем по одному заказанному повороту из буфера каждому игроку (отзывчивый ввод).
-  // Буст (фаза 2) использует то же направление — за тик исполняется максимум один поворот.
   const q0 = state.queues ?? [[], []];
   const pending = [...state.pending] as Direction[];
   const queues: [Direction[], Direction[]] = [q0[0].slice(), q0[1].slice()];
@@ -273,36 +270,22 @@ export function duelStep(state: DuelState, rng: () => number = Math.random): Due
   }
   const base: DuelState = { ...state, pending, queues };
 
-  // Фаза 1: оба двигаются на 1 клетку.
+  // Оба двигаются на 1 клетку.
   const r1 = advance(base, [true, true], rng);
   if (r1.ended) return r1.ended;
-  let cur = r1.state!;
-  picked = [r1.picked[0], r1.picked[1]];
+  const cur = r1.state!;
 
-  // Фаза 2: забустенные двигаются ещё на 1 клетку (итого 2 за тик).
-  const boostNow: [boolean, boolean] = [startBoosts[0] > 0, startBoosts[1] > 0];
-  if (boostNow[0] || boostNow[1]) {
-    const r2 = advance(cur, boostNow, rng);
-    if (r2.ended) return r2.ended;
-    cur = r2.state!;
-    picked = [picked[0] || r2.picked[0], picked[1] || r2.picked[1]];
-  }
-
-  // Housekeeping (раз в тик): таймеры буста, мигание, доспавн еды + буст-еды.
-  const boosts: [number, number] = [
-    picked[0] ? BOOST_TICKS : Math.max(0, startBoosts[0] - 1),
-    picked[1] ? BOOST_TICKS : Math.max(0, startBoosts[1] - 1),
-  ];
+  // Housekeeping (раз в тик): мигание, доспавн обычной еды + жирной еды.
   let foods = cur.foods.map((f) => ((f.blink ?? 0) > 0 ? { ...f, blink: (f.blink ?? 0) - 1 } : f));
   foods = ensureFoods(cur.snakes, foods, rng);
-  if (tick % BOOST_FOOD_EVERY === 0 && !foods.some((f) => f.boost)) {
+  if (tick % FAT_FOOD_EVERY === 0 && !foods.some((f) => f.fat)) {
     const occ = new Set<number>();
     for (const s of cur.snakes) for (const p of s) occ.add(key(p));
     for (const f of foods) occ.add(key(f.pos));
     const cell = freeCell(occ, cur.snakes[0][0], 6, rng);
-    if (cell) foods = [...foods, { pos: cell, color: 0, boost: true }];
+    if (cell) foods = [...foods, { pos: cell, color: 0, fat: true }];
   }
 
   // Раунд заканчивается ТОЛЬКО при крахе (обработан в advance). Ни по очкам, ни по времени.
-  return { ...cur, foods, boosts, tick, dirs: [...pending] as Direction[], queues };
+  return { ...cur, foods, tick, dirs: [...pending] as Direction[], queues };
 }

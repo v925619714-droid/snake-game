@@ -89,8 +89,8 @@ export function botDirection(
     const h = wrap(nextPoint(head, d));
     const food = state.foods.find((f) => pointsEqual(f.pos, h));
     const foodActive = Boolean(food && (food.blink ?? 0) <= 0);
-    if (food && foodActive && !food.boost && food.color !== me) continue; // живой чужой цвет = смерть (мигающий/буст безопасны)
-    const grow = Boolean(food && foodActive && !food.boost && food.color === me);
+    if (food && foodActive && !food.fat && food.color !== me) continue; // живой чужой цвет = смерть (мигающая/жирная безопасны)
+    const grow = Boolean(food && foodActive && (food.fat || food.color === me)); // жирная еда нейтральна и растит
     const ownBody = grow ? state.snakes[me] : state.snakes[me].slice(0, -1);
     if (ownBody.some((p) => pointsEqual(p, h))) continue; // своё тело
     if (state.snakes[opp].some((p) => pointsEqual(p, h))) continue; // тело соперника

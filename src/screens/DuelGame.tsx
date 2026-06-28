@@ -170,8 +170,6 @@ export default function DuelGame({
         playSfx('eat');
         hLight();
       }
-      // подобрал буст-еду (ускорение)
-      if ((prev.boosts?.[me] ?? 0) === 0 && (cur.boosts?.[me] ?? 0) > 0) playSfx('boost');
     }
 
     if (prev && prev.status === 'playing' && cur.status !== 'playing') {
@@ -440,11 +438,6 @@ export default function DuelGame({
         />
       </View>
       <Text style={[styles.youHint, { color: mine.head }]}>You are {mine.name} — eat {mine.name} food</Text>
-      {duel.boosts[you] > 0 && (
-        <View style={styles.boostPill}>
-          <Text style={styles.boostText}>⚡ SPEED ×2</Text>
-        </View>
-      )}
 
       {(() => {
         const total = duel.roundScore[you] + duel.roundScore[opp];
@@ -495,8 +488,8 @@ export default function DuelGame({
             }),
           )}
           {duel.foods.map((f, i) => {
-            if (f.boost) {
-              // Буст-еда (нейтральная, скорость): золотой кружок со свечением + белое ядро.
+            if (f.fat) {
+              // Жирная еда (нейтральная): золотой кружок со свечением + белое ядро (+рост).
               return (
                 <View
                   key={`f-${i}`}

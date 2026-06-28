@@ -850,6 +850,16 @@ function AppInner() {
                 <Animated.View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: COLORS.food, shadowColor: COLORS.food, shadowOpacity: 0.95, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 6, transform: [{ scale: foodScale }] }} />
               </View>
 
+              {state.fatFood && (
+                <View
+                  style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 1, transform: [{ translateX: state.fatFood.x * cell }, { translateY: state.fatFood.y * cell }] }}
+                >
+                  <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: '#FFE680', shadowColor: '#FFD75E', shadowOpacity: 1, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 7, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: cell * 0.34, height: cell * 0.34, borderRadius: cell * 0.2, backgroundColor: '#fff' }} />
+                  </View>
+                </View>
+              )}
+
               {state.status !== 'playing' && (
                 <View style={styles.overlay}>
                   <FadePop style={styles.overlayInner}>

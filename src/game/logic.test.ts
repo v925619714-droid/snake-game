@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 import {
   BOARD,
+  FAT_GROWTH,
   type GameState,
   createInitialState,
   isOpposite,
@@ -105,6 +106,13 @@ describe('step', () => {
     expect(n.score).toBe(1);
     expect(n.snake).toHaveLength(4);
     expect(n.snake[0]).toEqual({ x: 6, y: 5 });
+  });
+
+  test('жирная еда: +FAT_GROWTH роста и счёта', () => {
+    const n = step(playingState({ fatFood: { x: 6, y: 5 } }), rng0);
+    expect(n.snake[0]).toEqual({ x: 6, y: 5 });
+    expect(n.snake).toHaveLength(3 + FAT_GROWTH);
+    expect(n.score).toBe(FAT_GROWTH);
   });
 
   test('сквозь стену (wrap): уход за правый край → появление слева, без смерти', () => {
