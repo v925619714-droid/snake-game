@@ -16,9 +16,10 @@ import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
 import { play as playSfx } from '../lib/sound';
 import { shareResult, GAME_URL } from '../lib/share';
-import { hLight, hMedium, hSuccess, hError, colorblindOn } from '../lib/settings';
+import { hLight, hMedium, hSuccess, hError, colorblindOn, getCtrlScheme, getCtrlSide } from '../lib/settings';
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
+import { Dpad } from '../ui/Dpad';
 
 const C = {
   bg: '#0B0F17',
@@ -72,7 +73,7 @@ export default function DuelGame({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
-  const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - insets.top - insets.bottom - 300, 420)));
+  const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - insets.top - insets.bottom - (getCtrlScheme() === 'swipe' ? 150 : 356), 420)));
   const cell = boardPx / DUEL_BOARD;
 
   const { conn, role, code, duel, oppRating, oppId, vsBot, oppLeft, netError, joinFailed, createRoom, joinRoom, rejoin, playBot, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
@@ -268,9 +269,12 @@ export default function DuelGame({
   );
 
   // Свайп с ранним коммитом (меньше задержка): поворот при пересечении порога, один на жест.
+  // activeOffset: до 12px жест не активируется и не мешает тапам по D-pad/кнопкам.
   const swipe = useMemo(() => {
     let committed = false;
     return Gesture.Pan()
+      .activeOffsetX([-12, 12])
+      .activeOffsetY([-12, 12])
       .onBegin(() => {
         committed = false;
       })
@@ -416,6 +420,7 @@ export default function DuelGame({
   const mine = P[you];
 
   return (
+    <GestureDetector gesture={swipe}>
     <View style={[styles.container, pad]}>
       <View style={styles.hud}>
         <ScoreChip
@@ -450,8 +455,7 @@ export default function DuelGame({
         );
       })()}
 
-      <GestureDetector gesture={swipe}>
-        <View style={[styles.board, { width: boardPx, height: boardPx }]}>
+      <View style={[styles.board, { width: boardPx, height: boardPx }]}>
           {duel.snakes.map((snake, si) =>
             snake.map((p, i) => {
               const isHead = i === 0;
@@ -585,14 +589,14 @@ export default function DuelGame({
             </View>
           )}
         </View>
-      </GestureDetector>
 
-      <Dpad onPress={doTurn} />
+      <Dpad onTurn={doTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
 
       <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
         <Text style={styles.backText}>Leave</Text>
       </TouchScale>
     </View>
+    </GestureDetector>
   );
 }
 
@@ -633,28 +637,6 @@ function ScoreChip({
     </View>
   );
 }
-
-function DirButton({ label, dir, onPress }: { label: string; dir: Direction; onPress: (d: Direction) => void }) {
-  return (
-    <TouchScale style={styles.dirBtn} onPress={() => onPress(dir)} accessibilityLabel={`dir-${dir}`}>
-      <Text style={styles.dirBtnText}>{label}</Text>
-    </TouchScale>
-  );
-}
-
-// D-pad мемоизирован: onPress (doTurn) стабилен, панель не реконсилится каждый тик.
-const Dpad = memo(function Dpad({ onPress }: { onPress: (d: Direction) => void }) {
-  return (
-    <View style={styles.dpad}>
-      <DirButton label="▲" dir="up" onPress={onPress} />
-      <View style={styles.dpadRow}>
-        <DirButton label="◀" dir="left" onPress={onPress} />
-        <DirButton label="▼" dir="down" onPress={onPress} />
-        <DirButton label="▶" dir="right" onPress={onPress} />
-      </View>
-    </View>
-  );
-});
 
 const styles = StyleSheet.create({
   container: {
@@ -717,10 +699,6 @@ const styles = StyleSheet.create({
   overlayTitle: { fontFamily: fonts.display, color: C.text, fontSize: 26 },
   overlaySub: { fontFamily: fonts.body, color: C.textDim, fontSize: 16 },
   ratingDelta: { fontFamily: fonts.num, fontSize: 20 },
-  dpad: { alignItems: 'center', gap: 10 },
-  dpadRow: { flexDirection: 'row', gap: 10 },
-  dirBtn: { width: 56, height: 56, borderRadius: 16, backgroundColor: C.btn, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  dirBtnText: { color: C.text, fontSize: 24 },
   backBtn: { paddingVertical: 8, paddingHorizontal: 20 },
   backText: { color: C.textDim, fontSize: 15 },
 });

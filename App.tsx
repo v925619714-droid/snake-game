@@ -62,7 +62,8 @@ import { fetchProfileById, pushProfile, pushWallet, submitMatch } from './src/li
 import { EVENTS, identify, track } from './src/lib/analytics';
 import { initSound, play as playSfx, releaseSound } from './src/lib/sound';
 import { shareResult } from './src/lib/share';
-import { initSettings, hLight, hError, hSuccess } from './src/lib/settings';
+import { initSettings, hLight, hError, hSuccess, getCtrlScheme, getCtrlSide } from './src/lib/settings';
+import { Dpad } from './src/ui/Dpad';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -83,10 +84,13 @@ function speedFor(score: number): number {
 function AppInner() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  // Поле соло-экрана: подгоняется под устройство (учёт safe area), чтобы D-pad и хинт влезали.
+  // Поле соло-экрана: подгоняется под устройство (учёт safe area), чтобы D-pad влезал.
+  // Резерв под ромб-крестовик 212px выше, чем был у T-раскладки; в swipe-схеме пад скрыт
+  // и поле забирает высвобожденную высоту.
+  const dpadReserve = getCtrlScheme() === 'swipe' ? 130 : 336;
   const boardPx = Math.max(
     176,
-    Math.floor(Math.min(width - 32, height - insets.top - insets.bottom - 300, 360)),
+    Math.floor(Math.min(width - 32, height - insets.top - insets.bottom - dpadReserve, 360)),
   );
   const cell = boardPx / BOARD;
 
@@ -402,9 +406,13 @@ function AppInner() {
 
   // Свайп с ранним коммитом: поворачиваем, как только жест пересёк порог (а не на отпускании) —
   // заметно меньше задержка. Один поворот за жест (до отпускания пальца).
+  // activeOffset 12px: до этого сдвига жест не активируется и НЕ отменяет тапы по кнопкам —
+  // позволяет вешать свайп на весь экран (не только поле), не мешая D-pad/меню.
   const swipe = useMemo(() => {
     let committed = false;
     return Gesture.Pan()
+      .activeOffsetX([-12, 12])
+      .activeOffsetY([-12, 12])
       .onBegin(() => {
         committed = false;
       })
@@ -787,6 +795,8 @@ function AppInner() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <LinearGradient colors={gradients.vignette} style={styles.bg}>
+        {/* Свайп на ВЕСЬ экран (не только поле): нижняя половина — natural thumb zone. */}
+        <GestureDetector gesture={swipe}>
         <View style={[styles.soloContainer, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
           <StatusBar style="light" />
 
@@ -808,8 +818,7 @@ function AppInner() {
             </View>
           </View>
 
-          <GestureDetector gesture={swipe}>
-            <View style={[styles.board, { width: boardPx, height: boardPx }]}>
+          <View style={[styles.board, { width: boardPx, height: boardPx }]}>
               {state.snake.map((p, i) => {
                 const isHead = i === 0;
                 return (
@@ -921,12 +930,14 @@ function AppInner() {
                 </View>
               )}
           </View>
-        </GestureDetector>
 
-          <Text style={styles.hint}>Swipe anywhere or use the D-pad</Text>
+          {state.status !== 'playing' && (
+            <Text style={styles.hint}>Swipe anywhere or use the D-pad</Text>
+          )}
 
-          <Dpad onPress={handleTurn} />
+          <Dpad onTurn={handleTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
         </View>
+        </GestureDetector>
         {showOnboarding && <Onboarding onDone={finishOnboarding} />}
       </LinearGradient>
     </GestureHandlerRootView>
@@ -940,37 +951,6 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
-
-function DirButton({
-  label,
-  dir,
-  onPress,
-}: {
-  label: string;
-  dir: Direction;
-  onPress: (d: Direction) => void;
-}) {
-  return (
-    <TouchScale style={styles.dirBtn} onPress={() => onPress(dir)} accessibilityLabel={`dir-${dir}`}>
-      <Text style={styles.dirBtnText}>{label}</Text>
-    </TouchScale>
-  );
-}
-
-// D-pad вынесен и мемоизирован: onPress стабилен (useCallback), поэтому панель НЕ
-// реконсилится на каждом игровом тике (меньше работы рендера → плавнее).
-const Dpad = memo(function Dpad({ onPress }: { onPress: (d: Direction) => void }) {
-  return (
-    <View style={styles.dpad}>
-      <DirButton label="▲" dir="up" onPress={onPress} />
-      <View style={styles.dpadRow}>
-        <DirButton label="◀" dir="left" onPress={onPress} />
-        <DirButton label="▼" dir="down" onPress={onPress} />
-        <DirButton label="▶" dir="right" onPress={onPress} />
-      </View>
-    </View>
-  );
-});
 
 function ShopOverlay({
   wallet,
@@ -1116,7 +1096,7 @@ const styles = StyleSheet.create({
   },
   // Меню (прокручиваемое) и соло-экран (фиксированный, под swipe).
   menuScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 16 },
-  soloContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 16 },
+  soloContainer: { flex: 1, alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16 },
   soloTop: { width: '100%', maxWidth: 420, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
   backChip: { backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.borderGlass },
   backChipText: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
@@ -1219,20 +1199,6 @@ const styles = StyleSheet.create({
   pauseBtn: { position: 'absolute', top: 8, right: 8, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(7,10,16,0.55)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.borderGlass },
   pauseBtnText: { color: COLORS.text, fontSize: 14 },
   hint: { fontFamily: fonts.body, color: COLORS.textFaint, fontSize: 12, letterSpacing: 0.5 },
-  dpad: { alignItems: 'center', gap: 10 },
-  dpadRow: { flexDirection: 'row', gap: 10 },
-  dirBtn: {
-    width: 58,
-    height: 58,
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.borderGlass,
-  },
-  dirBtnPressed: { backgroundColor: COLORS.surfaceHi },
-  dirBtnText: { color: COLORS.text, fontSize: 24 },
   shopOverlay: {
     position: 'absolute',
     top: 0,

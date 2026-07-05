@@ -27,7 +27,8 @@ import { type Direction, swipeToDirection } from '../game/logic';
 import { usePartyRoom } from '../net/usePartyRoom';
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
-import { hLight, hSuccess, hError } from '../lib/settings';
+import { hLight, hSuccess, hError, getCtrlScheme, getCtrlSide } from '../lib/settings';
+import { Dpad } from '../ui/Dpad';
 import { play as playSfx } from '../lib/sound';
 import { shareResult, GAME_URL } from '../lib/share';
 import { EVENTS, track } from '../lib/analytics';
@@ -183,27 +184,6 @@ function PartyBoard({
   );
 }
 
-function DirButton({ label, dir, onPress }: { label: string; dir: Direction; onPress: (d: Direction) => void }) {
-  return (
-    <TouchScale style={styles.dirBtn} onPress={() => onPress(dir)} accessibilityLabel={`dir-${dir}`}>
-      <Text style={styles.dirBtnText}>{label}</Text>
-    </TouchScale>
-  );
-}
-
-const Dpad = memo(function Dpad({ onPress }: { onPress: (d: Direction) => void }) {
-  return (
-    <View style={styles.dpad}>
-      <DirButton label="▲" dir="up" onPress={onPress} />
-      <View style={styles.dpadRow}>
-        <DirButton label="◀" dir="left" onPress={onPress} />
-        <DirButton label="▼" dir="down" onPress={onPress} />
-        <DirButton label="▶" dir="right" onPress={onPress} />
-      </View>
-    </View>
-  );
-});
-
 function placeOf(state: PartyState, slot: number): number {
   const pos = state.placements.indexOf(slot);
   return pos < 0 ? 1 : state.snakes.length - pos;
@@ -212,7 +192,9 @@ function placeOf(state: PartyState, slot: number): number {
 function useBoardPx() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  return Math.max(260, Math.floor(Math.min(width - 20, height - insets.top - insets.bottom - 240, 480)));
+  // Резерв под ромб-крестовик (212px) выше, чем был у T-раскладки; swipe освобождает высоту.
+  const reserve = getCtrlScheme() === 'swipe' ? 140 : 330;
+  return Math.max(260, Math.floor(Math.min(width - 20, height - insets.top - insets.bottom - reserve, 480)));
 }
 
 // ── ЛОКАЛЬНАЯ ПРАКТИКА (vs боты) ──
@@ -624,6 +606,7 @@ function MatchView({
   };
 
   return (
+    <GestureDetector gesture={swipe}>
     <View style={[styles.container, pad]}>
       <View style={styles.hud}>
         <View style={[styles.chip, { borderColor: spectator ? C.border : PARTY_COLORS[mySlot % PARTY_COLORS.length].head }]}>
@@ -644,8 +627,7 @@ function MatchView({
         <Text style={styles.stakeBar} numberOfLines={1}>🏆 On the line: {stake}</Text>
       )}
 
-      <GestureDetector gesture={swipe}>
-        <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx} names={names}>
+      <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx} names={names}>
           {state.status === 'roundOver' && (
             <View style={styles.overlay}>
               <FadePop style={styles.overlayInner}>
@@ -705,7 +687,6 @@ function MatchView({
             </View>
           )}
         </PartyBoard>
-      </GestureDetector>
 
       {state.status === 'playing' && (
         <>
@@ -716,7 +697,9 @@ function MatchView({
                 ? 'Swipe or D-pad — eat to grow, outlast everyone'
                 : 'You are out — watch who wins'}
           </Text>
-          {!spectator && youAlive && <Dpad onPress={onTurn} />}
+          {!spectator && youAlive && (
+            <Dpad onTurn={onTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
+          )}
         </>
       )}
 
@@ -724,13 +707,17 @@ function MatchView({
         <Text style={styles.backText}>Leave</Text>
       </TouchScale>
     </View>
+    </GestureDetector>
   );
 }
 
 function useSwipe(onTurn: (d: Direction) => void) {
   return useMemo(() => {
     let committed = false;
+    // activeOffset: до 12px сдвига жест не активируется и не мешает тапам по D-pad/кнопкам.
     return Gesture.Pan()
+      .activeOffsetX([-12, 12])
+      .activeOffsetY([-12, 12])
       .onBegin(() => {
         committed = false;
       })
@@ -906,19 +893,6 @@ const styles = StyleSheet.create({
   overlayTitle: { fontFamily: fonts.display, color: C.text, fontSize: 24, textAlign: 'center' },
   overlaySub: { fontFamily: fonts.body, color: C.textDim, fontSize: 15, textAlign: 'center' },
   hint: { fontFamily: fonts.body, color: C.textDim, fontSize: 12, textAlign: 'center', paddingHorizontal: 16 },
-  dpad: { alignItems: 'center', gap: 10 },
-  dpadRow: { flexDirection: 'row', gap: 10 },
-  dirBtn: {
-    width: 58,
-    height: 58,
-    borderRadius: 16,
-    backgroundColor: C.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  dirBtnText: { color: C.text, fontSize: 24 },
   stakeBar: { fontFamily: fonts.bodyBold, color: '#FFE680', fontSize: 13, textAlign: 'center', paddingHorizontal: 16 },
   stakePrize: { fontFamily: fonts.bodyBold, color: '#FFE680', fontSize: 16, textAlign: 'center', paddingHorizontal: 16 },
   finishList: { gap: 3, alignItems: 'center', marginTop: 2 },
