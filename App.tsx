@@ -64,6 +64,7 @@ import { initSound, play as playSfx, releaseSound } from './src/lib/sound';
 import { shareResult } from './src/lib/share';
 import { initSettings, hLight, hError, hSuccess, getCtrlScheme, getCtrlSide } from './src/lib/settings';
 import { Dpad } from './src/ui/Dpad';
+import { type CoinPack, buyCoinPack, fetchCoinPacks, initIap } from './src/lib/iap';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -173,6 +174,9 @@ function AppInner() {
   bestRef.current = best;
   const profileRef = useRef(profile);
   profileRef.current = profile;
+  const authUserRef = useRef(authUser);
+  authUserRef.current = authUser;
+  const [coinPacks, setCoinPacks] = useState<CoinPack[]>([]);
   const stateRef = useRef(state);
   stateRef.current = state;
   const scoreRef = useRef(state.score);
@@ -238,6 +242,27 @@ function AppInner() {
       email: user.email ?? undefined,
       anon: user.isAnon,
     });
+  }, [saveWallet]);
+
+  // IAP: соединение со стором + грант монет после успешной покупки. На web/без продуктов —
+  // no-op, coinPacks остаётся [] и секция в магазине не рендерится.
+  useEffect(() => {
+    const cleanup = initIap((coins, sku) => {
+      const nw = addCoins(walletRef.current, coins);
+      setWallet(nw);
+      saveWallet(nw);
+      const u = authUserRef.current;
+      if (u) pushWallet(u.id, nw.coins, nw.owned, nw.selected, bestRef.current);
+      track(EVENTS.iapPurchase, { sku, coins });
+    });
+    // Цены подтягиваем с задержкой — initConnection асинхронный.
+    const t = setTimeout(() => {
+      fetchCoinPacks().then(setCoinPacks).catch(() => {});
+    }, 2500);
+    return () => {
+      clearTimeout(t);
+      cleanup();
+    };
   }, [saveWallet]);
 
   useEffect(() => {
@@ -780,7 +805,14 @@ function AppInner() {
           </ScrollView>
 
           {showShop && (
-            <ShopOverlay wallet={wallet} onBuy={handleBuy} onSelect={handleSelect} onClose={() => setShowShop(false)} />
+            <ShopOverlay
+              wallet={wallet}
+              coinPacks={coinPacks}
+              onBuy={handleBuy}
+              onSelect={handleSelect}
+              onBuyPack={(sku) => void buyCoinPack(sku)}
+              onClose={() => setShowShop(false)}
+            />
           )}
           {showQuests && quests && (
             <QuestsOverlay items={quests.items} onClaim={claimQuestReward} onClose={() => setShowQuests(false)} />
@@ -954,13 +986,17 @@ export default function App() {
 
 function ShopOverlay({
   wallet,
+  coinPacks,
   onBuy,
   onSelect,
+  onBuyPack,
   onClose,
 }: {
   wallet: Wallet;
+  coinPacks: CoinPack[];
   onBuy: (s: Skin) => void;
   onSelect: (id: string) => void;
+  onBuyPack: (sku: string) => void;
   onClose: () => void;
 }) {
   return (
@@ -975,6 +1011,29 @@ function ShopOverlay({
         </View>
 
         <ScrollView style={styles.shopList} contentContainerStyle={{ gap: 10 }}>
+          {coinPacks.length > 0 && (
+            <>
+              <Text style={styles.packHeader}>Get coins</Text>
+              {coinPacks.map((p) => (
+                <View key={p.sku} style={styles.skinRow}>
+                  <View style={styles.packIcon}>
+                    <View style={styles.coinDot} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.skinName}>{p.coins} coins</Text>
+                  </View>
+                  <TouchScale
+                    style={[styles.skinBtn, styles.packBtn]}
+                    onPress={() => onBuyPack(p.sku)}
+                    accessibilityLabel={`pack-${p.coins}`}
+                  >
+                    <Text style={styles.skinBtnText}>{p.price}</Text>
+                  </TouchScale>
+                </View>
+              ))}
+              <Text style={styles.packHeader}>Skins</Text>
+            </>
+          )}
           {SKINS.map((s) => {
             const owned = isOwned(wallet, s.id);
             const selected = wallet.selected === s.id;
@@ -1257,6 +1316,9 @@ const styles = StyleSheet.create({
   skinBtnActiveText: { fontFamily: fonts.bodyBold, color: COLORS.brand2, fontSize: 14 },
   skinBtnDisabled: { backgroundColor: COLORS.surfaceHi },
   skinBtnDisabledText: { color: COLORS.textFaint },
+  packHeader: { fontFamily: fonts.bodyBold, color: COLORS.textDim, fontSize: 12, letterSpacing: 1.5, marginTop: 4 },
+  packIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.surfaceHi, alignItems: 'center', justifyContent: 'center' },
+  packBtn: { backgroundColor: COLORS.coin },
   closeBtn: {
     backgroundColor: COLORS.surfaceHi,
     borderRadius: 999,

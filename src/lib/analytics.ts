@@ -47,6 +47,7 @@ export const EVENTS = {
   ratingChange: 'rating_change',
   partyStart: 'party_start',
   partyEnd: 'party_end',
+  iapPurchase: 'iap_purchase',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS] | string;

@@ -12,6 +12,7 @@
     "expo-audio": "~56.0.12",
     "expo-font": "~56.0.7",
     "expo-haptics": "~56.0.3",
+    "expo-iap": "^4.3.6",
     "expo-linear-gradient": "~56.0.4",
     "expo-splash-screen": "~56.0.10",
     "expo-status-bar": "~56.0.4",
