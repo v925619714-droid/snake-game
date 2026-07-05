@@ -16,6 +16,7 @@ import {
   type CtrlScheme,
   type CtrlSide,
 } from '../lib/settings';
+import { LANGS, getLang, setLang as saveLang, t, type Lang } from '../lib/i18n';
 
 // Сегментированный выбор (2-3 опции в ряд) — для схемы управления и стороны D-pad.
 function SegRow<T extends string>({
@@ -95,15 +96,27 @@ export default function Settings({ onBack }: { onBack: () => void }) {
   const [cb, setCb] = useState(colorblindOn());
   const [scheme, setScheme] = useState<CtrlScheme>(getCtrlScheme());
   const [side, setSide] = useState<CtrlSide>(getCtrlSide());
+  const [lang, setLangState] = useState<Lang>(getLang());
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
-      <Text style={styles.title}>Settings</Text>
+      <Text style={styles.title}>{t('settings')}</Text>
 
       <View style={styles.box}>
+        <SegRow<Lang>
+          label={t('language')}
+          options={LANGS.map((l) => ({ key: l.code, title: l.label }))}
+          value={lang}
+          a11y="set-lang"
+          onChange={(v) => {
+            setLangState(v);
+            void saveLang(v);
+          }}
+        />
+        <View style={styles.sep} />
         <Row
-          label="Sound"
-          desc="Game sound effects"
+          label={t('sound')}
+          desc={t('soundDesc')}
           value={sound}
           a11y="set-sound"
           onValueChange={(v) => {
@@ -113,8 +126,8 @@ export default function Settings({ onBack }: { onBack: () => void }) {
         />
         <View style={styles.sep} />
         <Row
-          label="Haptics"
-          desc="Vibration feedback (device only)"
+          label={t('haptics')}
+          desc={t('hapticsDesc')}
           value={hap}
           a11y="set-haptics"
           onValueChange={(v) => {
@@ -124,8 +137,8 @@ export default function Settings({ onBack }: { onBack: () => void }) {
         />
         <View style={styles.sep} />
         <Row
-          label="Color-blind shapes"
-          desc="Distinct food shapes in duels (square = rival)"
+          label={t('colorblind')}
+          desc={t('colorblindDesc')}
           value={cb}
           a11y="set-colorblind"
           onValueChange={(v) => {
@@ -135,12 +148,12 @@ export default function Settings({ onBack }: { onBack: () => void }) {
         />
         <View style={styles.sep} />
         <SegRow<CtrlScheme>
-          label="Controls"
-          desc="Swipe works everywhere in every scheme"
+          label={t('controls')}
+          desc={t('controlsDesc')}
           options={[
-            { key: 'dpad', title: 'D-pad' },
-            { key: 'split', title: 'Split' },
-            { key: 'swipe', title: 'Swipe' },
+            { key: 'dpad', title: t('ctrlDpad') },
+            { key: 'split', title: t('ctrlSplit') },
+            { key: 'swipe', title: t('ctrlSwipe') },
           ]}
           value={scheme}
           a11y="set-ctrl"
@@ -153,12 +166,12 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           <>
             <View style={styles.sep} />
             <SegRow<CtrlSide>
-              label="D-pad position"
-              desc="Dock to a side for one-handed play"
+              label={t('dpadPos')}
+              desc={t('dpadPosDesc')}
               options={[
-                { key: 'left', title: 'Left' },
-                { key: 'center', title: 'Center' },
-                { key: 'right', title: 'Right' },
+                { key: 'left', title: t('left') },
+                { key: 'center', title: t('center') },
+                { key: 'right', title: t('right') },
               ]}
               value={side}
               a11y="set-side"
@@ -172,7 +185,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
       </View>
 
       <TouchScale style={styles.back} onPress={onBack} accessibilityLabel="settings-back">
-        <Text style={styles.backText}>Back</Text>
+        <Text style={styles.backText}>{t('back')}</Text>
       </TouchScale>
     </View>
   );
@@ -196,9 +209,10 @@ const styles = StyleSheet.create({
   rowDesc: { fontFamily: fonts.body, color: C.textDim, fontSize: 12, marginTop: 2 },
   sep: { height: 1, backgroundColor: C.borderGlass },
   segRow: { paddingVertical: 14, gap: 10 },
-  seg: { flexDirection: 'row', gap: 8 },
+  seg: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   segBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '28%',
     paddingVertical: 9,
     borderRadius: 12,
     alignItems: 'center',

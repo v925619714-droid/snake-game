@@ -14,6 +14,7 @@
     "expo-haptics": "~56.0.3",
     "expo-iap": "^4.3.6",
     "expo-linear-gradient": "~56.0.4",
+    "expo-localization": "~56.0.6",
     "expo-splash-screen": "~56.0.10",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",

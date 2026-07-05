@@ -65,6 +65,7 @@ import { shareResult } from './src/lib/share';
 import { initSettings, hLight, hError, hSuccess, getCtrlScheme, getCtrlSide } from './src/lib/settings';
 import { Dpad } from './src/ui/Dpad';
 import { type CoinPack, buyCoinPack, fetchCoinPacks, initIap } from './src/lib/iap';
+import { initI18n, t } from './src/lib/i18n';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -177,6 +178,7 @@ function AppInner() {
   const authUserRef = useRef(authUser);
   authUserRef.current = authUser;
   const [coinPacks, setCoinPacks] = useState<CoinPack[]>([]);
+  const [, setLangTick] = useState(0); // ререндер после initI18n/смены языка
   const stateRef = useRef(state);
   stateRef.current = state;
   const scoreRef = useRef(state.score);
@@ -270,6 +272,8 @@ function AppInner() {
     if (initialRoom && initialFrom) track(EVENTS.challengeAccepted, { from: initialFrom });
     initSettings().catch(() => {});
     initSound().catch(() => {});
+    // После загрузки языка — форс-ререндер (первый кадр мог отрисоваться на дефолтном en).
+    initI18n().then(() => setLangTick((x) => x + 1)).catch(() => {});
     // Первый запуск (не по инвайт-ссылке) → показать онбординг.
     if (!initialRoom) {
       AsyncStorage.getItem(ONBOARDED_KEY)
@@ -685,10 +689,10 @@ function AppInner() {
                 <Text style={{ color: COLORS.text }}>WORK </Text>
                 <Text style={{ color: COLORS.brand3 }}>OFF</Text>
               </Text>
-              <Text style={styles.subtitle}>LAST SNAKE STANDING</Text>
+              <Text style={styles.subtitle}>{t('tagline')}</Text>
               <TouchScale style={styles.acctChip} onPress={() => setMode('account')} accessibilityLabel="account">
                 <Text style={styles.acctText} numberOfLines={1}>
-                  {authUser && !authUser.isAnon && authUser.email ? authUser.email : 'Guest · sign in to sync'}
+                  {authUser && !authUser.isAnon && authUser.email ? authUser.email : t('guestChip')}
                 </Text>
               </TouchScale>
             </View>
@@ -696,8 +700,8 @@ function AppInner() {
             {daily && daily.canClaim && (
               <TouchScale style={[styles.dailyWrap, styles.wide]} onPress={claimDaily} accessibilityLabel="daily-claim">
                 <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.dailyBtn}>
-                  <Text style={styles.dailyText}>🎁 Daily · Day {daily.streak} · +{daily.amount}</Text>
-                  <Text style={styles.dailyClaimText}>Claim</Text>
+                  <Text style={styles.dailyText}>🎁 {t('daily')} · {t('day')} {daily.streak} · +{daily.amount}</Text>
+                  <Text style={styles.dailyClaimText}>{t('claim')}</Text>
                 </LinearGradient>
               </TouchScale>
             )}
@@ -708,7 +712,7 @@ function AppInner() {
                 <Text style={styles.coinText} accessibilityLabel={`coins-${wallet.coins}`}>{wallet.coins}</Text>
               </View>
               <View style={styles.bestPill}>
-                <Text style={styles.bestPillLabel}>BEST</Text>
+                <Text style={styles.bestPillLabel}>{t('best')}</Text>
                 <Text style={styles.bestPillVal}>{best}</Text>
               </View>
               {streak.cur > 0 && (
@@ -728,7 +732,7 @@ function AppInner() {
 
             <TouchScale style={[styles.ctaWrap, styles.wide]} onPress={() => setMode('solo')} accessibilityLabel="play-solo">
               <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.menuCta}>
-                <Text style={styles.menuCtaText}>Play</Text>
+                <Text style={styles.menuCtaText}>{t('play')}</Text>
               </LinearGradient>
             </TouchScale>
 
@@ -743,7 +747,7 @@ function AppInner() {
               accessibilityLabel="versus"
             >
               <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.menuCta}>
-                <Text style={styles.menuCtaText}>Versus</Text>
+                <Text style={styles.menuCtaText}>{t('versus')}</Text>
               </LinearGradient>
             </TouchScale>
 
@@ -759,7 +763,7 @@ function AppInner() {
             >
               <LinearGradient colors={gradients.ranked} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.rankedCta}>
                 <Text style={styles.rankedText}>
-                  Ranked · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tier.name}</Text> {profile?.rating ?? 1000}
+                  {t('ranked')} · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tier.name}</Text> {profile?.rating ?? 1000}
                 </Text>
               </LinearGradient>
             </TouchScale>
@@ -773,13 +777,13 @@ function AppInner() {
               accessibilityLabel="party"
             >
               <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.menuCta}>
-                <Text style={styles.menuCtaText}>Office Royale (beta)</Text>
+                <Text style={styles.menuCtaText}>{t('party')}</Text>
               </LinearGradient>
             </TouchScale>
 
             <View style={[styles.menuGhostRow, styles.wide]}>
               <TouchScale style={[styles.ghostBtn, styles.ghostHalf]} onPress={openShop} accessibilityLabel="shop">
-                <Text style={styles.ghostText}>Shop</Text>
+                <Text style={styles.ghostText}>{t('shop')}</Text>
               </TouchScale>
               <TouchScale
                 style={[styles.ghostBtn, styles.ghostHalf]}
@@ -789,18 +793,18 @@ function AppInner() {
                 }}
                 accessibilityLabel="leaderboard"
               >
-                <Text style={styles.ghostText}>Leaderboard</Text>
+                <Text style={styles.ghostText}>{t('leaderboard')}</Text>
               </TouchScale>
             </View>
 
             <TouchScale style={[styles.ghostBtn, styles.wide, styles.ghostWide]} onPress={() => setShowQuests(true)} accessibilityLabel="quests">
               <Text style={styles.ghostText}>
-                🎯 Daily quests{quests && claimableCount(quests.items) > 0 ? `  •${claimableCount(quests.items)}` : ''}
+                {t('dailyQuests')}{quests && claimableCount(quests.items) > 0 ? `  •${claimableCount(quests.items)}` : ''}
               </Text>
             </TouchScale>
 
             <TouchScale style={styles.helpLink} onPress={() => setShowOnboarding(true)} accessibilityLabel="how-to-play">
-              <Text style={styles.helpText}>How to play</Text>
+              <Text style={styles.helpText}>{t('howToPlay')}</Text>
             </TouchScale>
           </ScrollView>
 
@@ -834,14 +838,14 @@ function AppInner() {
 
           <View style={styles.soloTop}>
             <TouchScale style={styles.backChip} onPress={() => setMode('menu')} accessibilityLabel="solo-back">
-              <Text style={styles.backChipText}>‹ Menu</Text>
+              <Text style={styles.backChipText}>{t('menuBack')}</Text>
             </TouchScale>
             <View style={styles.soloScores}>
               <Text style={styles.soloScoreText}>
-                SCORE <Text style={styles.soloScoreVal} accessibilityLabel={`score-${state.score}`}>{state.score}</Text>
+                {t('score')} <Text style={styles.soloScoreVal} accessibilityLabel={`score-${state.score}`}>{state.score}</Text>
               </Text>
               <Text style={styles.soloScoreText}>
-                BEST <Text style={[styles.soloScoreVal, styles.scoreBest]}>{best}</Text>
+                {t('best')} <Text style={[styles.soloScoreVal, styles.scoreBest]}>{best}</Text>
               </Text>
             </View>
             <View style={styles.coinPill}>
@@ -905,10 +909,10 @@ function AppInner() {
                 <View style={styles.overlay}>
                   <FadePop style={styles.overlayInner}>
                     <Text style={styles.overlayTitle}>
-                      {state.status === 'over' ? 'Game over' : 'Ready?'}
+                      {state.status === 'over' ? t('gameOver') : t('ready')}
                     </Text>
                     {state.status === 'over' && (
-                      <Text style={styles.overlaySub}>Score: {state.score}</Text>
+                      <Text style={styles.overlaySub}>{t('score')}: {state.score}</Text>
                     )}
                     <TouchScale
                       style={[styles.startBtn, { backgroundColor: skin.body }]}
@@ -916,7 +920,7 @@ function AppInner() {
                       accessibilityLabel="start"
                     >
                       <Text style={styles.startBtnText}>
-                        {state.status === 'over' ? 'Again' : 'Start'}
+                        {state.status === 'over' ? t('again') : t('start')}
                       </Text>
                     </TouchScale>
                     {state.status === 'over' && (
@@ -927,14 +931,14 @@ function AppInner() {
                           shareResult(`I scored ${sc} in Shake Work Off 🐍 — can you beat it?`).then((o) => {
                             track(EVENTS.share, { where: 'solo', score: sc, outcome: o });
                             if (o === 'copied') {
-                              setShareNote('Link copied!');
+                              setShareNote(t('linkCopied'));
                               setTimeout(() => setShareNote(''), 1500);
                             }
                           });
                         }}
                         accessibilityLabel="share-score"
                       >
-                        <Text style={styles.shareBtnText}>{shareNote || 'Share score'}</Text>
+                        <Text style={styles.shareBtnText}>{shareNote || t('shareScore')}</Text>
                       </TouchScale>
                     )}
                   </FadePop>
@@ -950,13 +954,13 @@ function AppInner() {
               {state.status === 'playing' && paused && (
                 <View style={styles.overlay}>
                   <FadePop style={styles.overlayInner}>
-                    <Text style={styles.overlayTitle}>Paused</Text>
+                    <Text style={styles.overlayTitle}>{t('paused')}</Text>
                     <TouchScale
                       style={[styles.startBtn, { backgroundColor: skin.body }]}
                       onPress={() => setPaused(false)}
                       accessibilityLabel="resume"
                     >
-                      <Text style={styles.startBtnText}>Resume</Text>
+                      <Text style={styles.startBtnText}>{t('resume')}</Text>
                     </TouchScale>
                   </FadePop>
                 </View>
@@ -964,7 +968,7 @@ function AppInner() {
           </View>
 
           {state.status !== 'playing' && (
-            <Text style={styles.hint}>Swipe anywhere or use the D-pad</Text>
+            <Text style={styles.hint}>{t('swipeHint')}</Text>
           )}
 
           <Dpad onTurn={handleTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
@@ -1003,7 +1007,7 @@ function ShopOverlay({
     <View style={styles.shopOverlay}>
       <View style={styles.shopCard}>
         <View style={styles.shopHeader}>
-          <Text style={styles.shopTitle}>Skins</Text>
+          <Text style={styles.shopTitle}>{t('skins')}</Text>
           <View style={styles.coinPill}>
             <View style={styles.coinDot} />
             <Text style={styles.coinText}>{wallet.coins}</Text>
@@ -1013,14 +1017,14 @@ function ShopOverlay({
         <ScrollView style={styles.shopList} contentContainerStyle={{ gap: 10 }}>
           {coinPacks.length > 0 && (
             <>
-              <Text style={styles.packHeader}>Get coins</Text>
+              <Text style={styles.packHeader}>{t('getCoins')}</Text>
               {coinPacks.map((p) => (
                 <View key={p.sku} style={styles.skinRow}>
                   <View style={styles.packIcon}>
                     <View style={styles.coinDot} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.skinName}>{p.coins} coins</Text>
+                    <Text style={styles.skinName}>{p.coins} {t('coins')}</Text>
                   </View>
                   <TouchScale
                     style={[styles.skinBtn, styles.packBtn]}
@@ -1031,7 +1035,7 @@ function ShopOverlay({
                   </TouchScale>
                 </View>
               ))}
-              <Text style={styles.packHeader}>Skins</Text>
+              <Text style={styles.packHeader}>{t('skins')}</Text>
             </>
           )}
           {SKINS.map((s) => {
@@ -1046,11 +1050,11 @@ function ShopOverlay({
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.skinName}>{s.name}</Text>
-                  <Text style={styles.skinPrice}>{s.price === 0 ? 'Free' : `${s.price} coins`}</Text>
+                  <Text style={styles.skinPrice}>{s.price === 0 ? t('free') : `${s.price} ${t('coins')}`}</Text>
                 </View>
                 {selected ? (
                   <View style={[styles.skinBtn, styles.skinBtnActive]}>
-                    <Text style={styles.skinBtnActiveText}>Selected</Text>
+                    <Text style={styles.skinBtnActiveText}>{t('selected')}</Text>
                   </View>
                 ) : owned ? (
                   <TouchScale
@@ -1058,7 +1062,7 @@ function ShopOverlay({
                     onPress={() => onSelect(s.id)}
                     accessibilityLabel={`select-${s.id}`}
                   >
-                    <Text style={styles.skinBtnText}>Select</Text>
+                    <Text style={styles.skinBtnText}>{t('select')}</Text>
                   </TouchScale>
                 ) : (
                   <TouchScale
@@ -1067,7 +1071,7 @@ function ShopOverlay({
                     accessibilityLabel={`buy-${s.id}`}
                   >
                     <Text style={[styles.skinBtnText, !affordable && styles.skinBtnDisabledText]}>
-                      Buy
+                      {t('buy')}
                     </Text>
                   </TouchScale>
                 )}
@@ -1077,7 +1081,7 @@ function ShopOverlay({
         </ScrollView>
 
         <TouchScale style={styles.closeBtn} onPress={onClose} accessibilityLabel="shop-close">
-          <Text style={styles.closeBtnText}>Close</Text>
+          <Text style={styles.closeBtnText}>{t('close')}</Text>
         </TouchScale>
       </View>
     </View>
