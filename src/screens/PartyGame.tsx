@@ -18,7 +18,7 @@ import { partyBotDir } from '../game/partyBot';
 import { type Direction, swipeToDirection } from '../game/logic';
 import { usePartyRoom } from '../net/usePartyRoom';
 import { palette, fonts, radius, shade } from '../theme/tokens';
-import { TouchScale, Confetti } from '../ui/anim';
+import { TouchScale, Confetti, PulsingDot } from '../ui/anim';
 import { hLight, hSuccess, hError, getCtrlScheme, getCtrlSide } from '../lib/settings';
 import { Dpad } from '../ui/Dpad';
 import { GameButton } from '../ui/GameButton';
@@ -458,7 +458,10 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
             style={styles.wideBtn}
           />
         ) : (
-          <Text style={styles.status}>{tr('waitingHost')}</Text>
+          <View style={styles.waitRow}>
+            <PulsingDot />
+            <Text style={styles.status}>{tr('waitingHost')}</Text>
+          </View>
         )}
         <GameButton title={tr('leave')} variant="ghost" onPress={handleExit} a11y="party-leave" />
       </ScreenShell>
@@ -720,6 +723,7 @@ const styles = StyleSheet.create({
   codeInput: { width: 150, textAlign: 'center' },
   joinRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   status: { fontFamily: fonts.body, color: palette.text, fontSize: 16 },
+  waitRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   playerList: { gap: 6, alignItems: 'flex-start', minHeight: 40 },
   playerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   playerDot: { width: 12, height: 12, borderRadius: 6 },

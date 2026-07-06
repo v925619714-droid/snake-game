@@ -16,57 +16,113 @@ interface Slide {
   visual: () => ReactElement;
 }
 
-function Dot({ color, glowing }: { color: string; glowing?: boolean }) {
+// ── Мини-сцены на сетке поля (C1): иллюстрации выглядят как настоящая игра ──
+const SC = 18; // клетка мини-сцены
+
+// Тёмная мини-доска с сеткой — фон каждой сценки.
+function SceneBoard({ cols = 12, rows = 5, children }: { cols?: number; rows?: number; children: ReactElement | ReactElement[] }) {
   return (
-    <View style={[styles.cell, { backgroundColor: color }, glowing && glow(color, 10, 0.9)]} />
+    <View style={[styles.sceneBoard, { width: cols * SC + 3, height: rows * SC + 3 }]}>
+      {Array.from({ length: cols * rows }, (_, i) => (
+        <View key={i} style={styles.sceneGridCell} />
+      ))}
+      {children}
+    </View>
+  );
+}
+
+// Сегмент змейки в клетке (cx, cy); голова — с глазами и свечением.
+function Seg({ cx, cy, color, head, headColor }: { cx: number; cy: number; color: string; head?: boolean; headColor?: string }) {
+  return (
+    <View style={[styles.sceneAbs, { left: cx * SC + 2.5, top: cy * SC + 2.5 }]}>
+      <View
+        style={[
+          styles.seg,
+          { backgroundColor: color, borderRadius: head ? 6 : 5 },
+          head && headColor ? glow(headColor, 6, 0.9) : null,
+        ]}
+      >
+        {head && (
+          <>
+            <View style={[styles.segEye, { left: 3 }]} />
+            <View style={[styles.segEye, { right: 3 }]} />
+          </>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// Еда в клетке: круглая цветная или золотая «жирная».
+function FoodDot({ cx, cy, color, fat }: { cx: number; cy: number; color?: string; fat?: boolean }) {
+  const c = fat ? '#FFE680' : color ?? C.food;
+  return (
+    <View style={[styles.sceneAbs, { left: cx * SC + 3, top: cy * SC + 3 }]}>
+      <View style={[styles.sceneFood, { backgroundColor: c }, glow(fat ? '#FFD75E' : c, 6, 0.95)]}>
+        {fat && <View style={styles.sceneFoodCore} />}
+      </View>
+    </View>
+  );
+}
+
+// Пометка ✓/✕ над клеткой.
+function Mark({ cx, cy, text, color }: { cx: number; cy: number; text: string; color: string }) {
+  return (
+    <Text style={[styles.sceneMark, { left: cx * SC - SC, top: cy * SC - 1, color }]}>{text}</Text>
   );
 }
 
 const SLIDES: Slide[] = [
   {
     key: 'welcome',
+    // Две змейки идут навстречу на настоящем поле.
     title: 'ob1Title',
     body: 'ob1Body',
     visual: () => (
-      <View style={styles.vizRow}>
-        <Dot color={C.redHead} glowing />
-        <Dot color={C.red} />
-        <Dot color={C.red} />
-        <View style={{ width: 18 }} />
-        <Dot color={C.blueHead} glowing />
-        <Dot color={C.blue} />
-        <Dot color={C.blue} />
-      </View>
+      <SceneBoard>
+        <Seg cx={1} cy={3} color={C.red} />
+        <Seg cx={2} cy={3} color={C.red} />
+        <Seg cx={3} cy={3} color={C.red} />
+        <Seg cx={4} cy={3} color={C.redHead} head headColor={C.redHead} />
+        <Seg cx={10} cy={1} color={C.blue} />
+        <Seg cx={9} cy={1} color={C.blue} />
+        <Seg cx={8} cy={1} color={C.blue} />
+        <Seg cx={7} cy={1} color={C.blueHead} head headColor={C.blueHead} />
+      </SceneBoard>
     ),
   },
   {
     key: 'colors',
+    // Красная змейка между своей (✓) и чужой (✕) едой.
     title: 'ob2Title',
     body: 'ob2Body',
     visual: () => (
-      <View style={styles.vizRow}>
-        <View style={styles.vizItem}>
-          <View style={[styles.foodDot, { backgroundColor: C.red }, glow(C.red, 8, 0.9)]} />
-          <Text style={[styles.vizMark, { color: C.accent }]}>{t('obEat')}</Text>
-        </View>
-        <View style={styles.vizItem}>
-          <View style={[styles.foodDot, { backgroundColor: C.blue }, glow(C.blue, 8, 0.9)]} />
-          <Text style={[styles.vizMark, { color: C.danger }]}>{t('obDeath')}</Text>
-        </View>
-      </View>
+      <SceneBoard>
+        <Seg cx={1} cy={2} color={C.red} />
+        <Seg cx={2} cy={2} color={C.red} />
+        <Seg cx={3} cy={2} color={C.redHead} head headColor={C.redHead} />
+        <FoodDot cx={6} cy={2} color={C.red} />
+        <Mark cx={6} cy={1} text={t('obEat')} color={C.accent} />
+        <FoodDot cx={9} cy={3} color={C.blue} />
+        <Mark cx={9} cy={4} text={t('obDeath')} color={C.danger} />
+      </SceneBoard>
     ),
   },
   {
     key: 'boost',
+    // Золотая еда и змейка с «трейлом скорости».
     title: 'ob3Title',
     body: 'ob3Body',
     visual: () => (
-      <View style={styles.vizRow}>
-        <View style={[styles.foodDot, styles.boostDot]}>
-          <View style={styles.boostCore} />
-        </View>
-        <Text style={[styles.vizMark, { color: C.coinHi }]}>{t('obSpeed')}</Text>
-      </View>
+      <SceneBoard>
+        <Seg cx={2} cy={2} color={'rgba(255,92,92,0.25)'} />
+        <Seg cx={3} cy={2} color={'rgba(255,92,92,0.45)'} />
+        <Seg cx={4} cy={2} color={C.red} />
+        <Seg cx={5} cy={2} color={C.red} />
+        <Seg cx={6} cy={2} color={C.redHead} head headColor={C.redHead} />
+        <FoodDot cx={9} cy={2} fat />
+        <Mark cx={9} cy={0} text={t('obSpeed')} color={C.coinHi} />
+      </SceneBoard>
     ),
   },
   {
@@ -141,19 +197,32 @@ const styles = StyleSheet.create({
   top: { position: 'absolute', top: 48, right: 20 },
   skip: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999 },
   skipText: { fontFamily: fonts.bodyBold, color: C.textDim, fontSize: 14 },
-  card: { alignItems: 'center', gap: 16, maxWidth: 380 },
+  // Фиксированная высота карточки: пейджер и CTA больше не прыгают между слайдами (C1).
+  card: { alignItems: 'center', gap: 16, maxWidth: 380, height: 330 },
   viz: {
-    width: '100%', minHeight: 110, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.borderGlass, paddingVertical: 22,
+    width: '100%', height: 150, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.surface, borderRadius: 20, borderWidth: 1, borderColor: C.borderGlass,
     ...elevation.card,
   },
   vizRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  vizItem: { alignItems: 'center', gap: 8 },
-  cell: { width: 22, height: 22, borderRadius: 7 },
-  foodDot: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  boostDot: { backgroundColor: '#FFE680', ...glow('#FFD75E', 8, 0.9) },
-  boostCore: { width: 11, height: 11, borderRadius: 6, backgroundColor: '#fff' },
-  vizMark: { fontFamily: fonts.bodyBold, fontSize: 13, letterSpacing: 1 },
+  // Мини-сцена: доска с сеткой + абсолютные клетки.
+  sceneBoard: {
+    backgroundColor: C.board,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: C.borderGlow,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 1.5,
+  },
+  sceneGridCell: { width: 18, height: 18, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.035)' },
+  sceneAbs: { position: 'absolute' },
+  seg: { width: 13, height: 13, alignItems: 'center', justifyContent: 'center' },
+  segEye: { position: 'absolute', top: 3, width: 2.6, height: 2.6, borderRadius: 1.3, backgroundColor: '#06121e' },
+  sceneFood: { width: 12, height: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  sceneFoodCore: { width: 4.5, height: 4.5, borderRadius: 2.5, backgroundColor: '#fff' },
+  sceneMark: { position: 'absolute', width: 18 * 3, textAlign: 'center', fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 0.5 },
   badge: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999 },
   badgeText: { fontFamily: fonts.display, color: C.onBrand, fontSize: 14, letterSpacing: 1 },
   coinBadge: { width: 28, height: 28, borderRadius: 14 },

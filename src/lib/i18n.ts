@@ -77,7 +77,7 @@ const S = {
   party: { en: 'Office Royale (beta)', ru: 'Office Royale (бета)', es: 'Office Royale (beta)', de: 'Office Royale (Beta)', pt: 'Office Royale (beta)' },
   shop: { en: 'Shop', ru: 'Магазин', es: 'Tienda', de: 'Shop', pt: 'Loja' },
   leaderboard: { en: 'Leaderboard', ru: 'Лидеры', es: 'Clasificación', de: 'Bestenliste', pt: 'Classificação' },
-  dailyQuests: { en: '🎯 Daily quests', ru: '🎯 Задания дня', es: '🎯 Misiones diarias', de: '🎯 Tagesquests', pt: '🎯 Missões diárias' },
+  dailyQuests: { en: 'Daily quests', ru: 'Задания дня', es: 'Misiones diarias', de: 'Tagesquests', pt: 'Missões diárias' },
   howToPlay: { en: 'How to play', ru: 'Как играть', es: 'Cómo jugar', de: 'Spielanleitung', pt: 'Como jogar' },
 
   // Соло
@@ -85,6 +85,7 @@ const S = {
   menuBack: { en: '‹ Menu', ru: '‹ Меню', es: '‹ Menú', de: '‹ Menü', pt: '‹ Menu' },
   swipeHint: { en: 'Swipe anywhere or use the D-pad', ru: 'Свайп в любом месте или кнопки', es: 'Desliza o usa la cruceta', de: 'Wischen oder Steuerkreuz nutzen', pt: 'Deslize ou use o direcional' },
   keyboardHint: { en: 'Arrows / WASD', ru: 'Стрелки / WASD', es: 'Flechas / WASD', de: 'Pfeile / WASD', pt: 'Setas / WASD' },
+  saveError: { en: 'Could not save the setting', ru: 'Не удалось сохранить настройку', es: 'No se pudo guardar el ajuste', de: 'Einstellung konnte nicht gespeichert werden', pt: 'Não foi possível salvar o ajuste' },
   paused: { en: 'Paused', ru: 'Пауза', es: 'Pausa', de: 'Pause', pt: 'Pausa' },
   resume: { en: 'Resume', ru: 'Продолжить', es: 'Continuar', de: 'Weiter', pt: 'Continuar' },
   gameOver: { en: 'Game over', ru: 'Игра окончена', es: 'Fin del juego', de: 'Game Over', pt: 'Fim de jogo' },

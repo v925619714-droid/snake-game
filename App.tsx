@@ -64,6 +64,7 @@ import { shareResult } from './src/lib/share';
 import { initSettings, hLight, hError, hSuccess, getCtrlScheme, getCtrlSide } from './src/lib/settings';
 import { Dpad } from './src/ui/Dpad';
 import { SnakeCell, FoodCell } from './src/ui/BoardCells';
+import { IconGift, IconSliders, IconTarget } from './src/ui/icons';
 import { useBoardPx, useIsDesktopWeb } from './src/lib/layout';
 import { type CoinPack, buyCoinPack, fetchCoinPacks, initIap } from './src/lib/iap';
 import { initI18n, subscribeLang, t, tierName } from './src/lib/i18n';
@@ -712,7 +713,10 @@ function AppInner() {
             {daily && daily.canClaim && (
               <TouchScale style={[styles.dailyWrap, styles.wide]} onPress={claimDaily} accessibilityLabel="daily-claim">
                 <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.dailyBtn}>
-                  <Text style={styles.dailyText}>🎁 {t('daily')} · {t('day')} {daily.streak} · +{daily.amount}</Text>
+                  <View style={styles.dailyLeft}>
+                    <IconGift size={15} color={COLORS.onAccent} />
+                    <Text style={styles.dailyText}>{t('daily')} · {t('day')} {daily.streak} · +{daily.amount}</Text>
+                  </View>
                   <Text style={styles.dailyClaimText}>{t('claim')}</Text>
                 </LinearGradient>
               </TouchScale>
@@ -738,7 +742,7 @@ function AppInner() {
                 onPress={() => setMode('settings')}
                 accessibilityLabel="open-settings"
               >
-                <Text style={styles.soundChipText}>⚙️</Text>
+                <IconSliders size={16} color={COLORS.text} />
               </TouchScale>
             </View>
 
@@ -809,7 +813,8 @@ function AppInner() {
               </TouchScale>
             </View>
 
-            <TouchScale style={[styles.ghostBtn, styles.wide, styles.ghostWide]} onPress={() => setShowQuests(true)} accessibilityLabel="quests">
+            <TouchScale style={[styles.ghostBtn, styles.wide, styles.ghostWide, styles.questsBtn]} onPress={() => setShowQuests(true)} accessibilityLabel="quests">
+              <IconTarget size={15} color={COLORS.brand1} />
               <Text style={styles.ghostText}>
                 {t('dailyQuests')}{quests && claimableCount(quests.items) > 0 ? `  •${claimableCount(quests.items)}` : ''}
               </Text>
@@ -1198,6 +1203,8 @@ const styles = StyleSheet.create({
   acctText: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 11 },
   dailyWrap: { width: '100%', maxWidth: 360, borderRadius: 999, overflow: 'hidden', ...elevation.glow },
   dailyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 18 },
+  dailyLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  questsBtn: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
   dailyText: { fontFamily: fonts.bodyBold, color: COLORS.onAccent, fontSize: 13 },
   dailyClaimText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 14, letterSpacing: 0.5 },
   scoreRow: { flexDirection: 'row', gap: 12 },
@@ -1320,7 +1327,8 @@ const styles = StyleSheet.create({
   },
   questRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: COLORS.surface, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: COLORS.borderGlass },
   questLabel: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
-  questBar: { height: 6, borderRadius: 3, backgroundColor: COLORS.surfaceHi, overflow: 'hidden' },
+  // Бордер делает трек видимым и при 0% прогресса (C).
+  questBar: { height: 7, borderRadius: 4, backgroundColor: COLORS.surfaceHi, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.borderGlass },
   questBarFill: { height: 6, borderRadius: 3, backgroundColor: COLORS.brand1 },
   questMeta: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 11 },
   skinSwatch: { flexDirection: 'row', gap: 3 },

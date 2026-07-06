@@ -2,8 +2,8 @@
 // Поворот срабатывает на onPressIn (касание), а не onPress (отпускание) — на быстрых
 // тиках экономит 60-100мс задержки ввода. Раскладка — классический ромб: ▲/▼ разнесены
 // от ◀/▶ по вертикали, промах больше не бьёт по противоположному направлению.
-import { memo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import type { Direction } from '../game/logic';
 import { palette } from '../theme/tokens';
 import { hLight } from '../lib/settings';
@@ -12,13 +12,40 @@ export type ControlScheme = 'dpad' | 'split' | 'swipe';
 export type DpadSide = 'left' | 'center' | 'right';
 
 const BTN = 64;
-const GAP = 10;
-// hitSlop 5 схлопывает зазор между кнопками, не создавая перекрытия целей (5+5 = GAP).
+// GAP 14 при hitSlop 5: между тач-зонами остаётся мёртвая зона 4px — меньше
+// случайных двойных активаций при быстрых движениях (C).
+const GAP = 14;
 const SLOP = { top: 5, bottom: 5, left: 5, right: 5 };
 
-const GLYPHS: Record<Direction, string> = { up: '▲', down: '▼', left: '◀', right: '▶' };
+// Фирменный глиф — неоновый шеврон (рисуется бордерами, не системный ▲): единый
+// вид на iOS/Android/web, подсветка brand1 при нажатии.
+const CHEVRON_ROT: Record<Direction, string> = {
+  up: '-45deg',
+  down: '135deg',
+  left: '-135deg',
+  right: '45deg',
+};
+
+function Chevron({ dir, color }: { dir: Direction; color: string }) {
+  // Смещаем шеврон к центру масс, чтобы визуально сидел по центру кнопки.
+  const shift = 3;
+  const offset =
+    dir === 'up' ? { marginTop: shift } : dir === 'down' ? { marginBottom: shift } : dir === 'left' ? { marginLeft: shift } : { marginRight: shift };
+  return (
+    <View
+      style={[
+        styles.chevron,
+        offset,
+        { borderTopColor: color, borderRightColor: color, transform: [{ rotate: CHEVRON_ROT[dir] }] },
+      ]}
+    />
+  );
+}
 
 function DirBtn({ dir, onTurn }: { dir: Direction; onTurn: (d: Direction) => void }) {
+  // Явный pressed-стейт вместо style-колбэка Pressable: не пересоздаём массивы
+  // стилей на каждый кадр нажатия (аудит P2-13).
+  const [pressed, setPressed] = useState(false);
   return (
     <Pressable
       accessibilityLabel={`dir-${dir}`}
@@ -26,12 +53,12 @@ function DirBtn({ dir, onTurn }: { dir: Direction; onTurn: (d: Direction) => voi
       onPressIn={() => {
         onTurn(dir);
         hLight();
+        setPressed(true);
       }}
-      style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+      onPressOut={() => setPressed(false)}
+      style={[styles.btn, pressed && styles.btnPressed]}
     >
-      {({ pressed }) => (
-        <Text style={[styles.glyph, pressed && styles.glyphPressed]}>{GLYPHS[dir]}</Text>
-      )}
+      <Chevron dir={dir} color={pressed ? palette.brand1 : palette.text} />
     </Pressable>
   );
 }
@@ -95,8 +122,15 @@ const styles = StyleSheet.create({
     borderColor: palette.borderGlow,
     transform: [{ scale: 0.92 }],
   },
-  glyph: { color: palette.text, fontSize: 28 },
-  glyphPressed: { color: palette.brand1 },
+  chevron: {
+    width: 18,
+    height: 18,
+    borderTopWidth: 3.5,
+    borderRightWidth: 3.5,
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 2,
+  },
   diamond: { alignItems: 'center', gap: GAP, alignSelf: 'center' },
   midRow: { flexDirection: 'row', gap: GAP },
   dockL: { alignSelf: 'flex-start', marginLeft: 12 },

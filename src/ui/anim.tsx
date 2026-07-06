@@ -95,6 +95,33 @@ export function TouchScale({
   );
 }
 
+// Пульсирующая точка «идёт ожидание» (C): рядом со статусами вроде «Ждём соперника…».
+export function PulsingDot({ color = '#7CF7D4', size = 8 }: { color?: string; size?: number }) {
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(a, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(a, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [a]);
+  return (
+    <Animated.View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color,
+        opacity: a.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }),
+        transform: [{ scale: a.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1.15] }) }],
+      }}
+    />
+  );
+}
+
 // Появление с fade + scale (для оверлеев Ready/Game over/round/match).
 export function FadePop({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const a = useRef(new Animated.Value(0)).current;

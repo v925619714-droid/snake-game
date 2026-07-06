@@ -12,9 +12,9 @@ export function useIsDesktopWeb(): boolean {
   return Platform.OS === 'web' && width > 768;
 }
 
-// Фактические высоты блока управления:
-// dpad (ромб) = 3 кнопки × 64 + 2 зазора × 10 = 212; split = 2 × 64 + 10 = 138; swipe = 0.
-export const CTRL_HEIGHTS = { dpad: 212, split: 138, swipe: 0 } as const;
+// Фактические высоты блока управления (Dpad.tsx: BTN=64, GAP=14):
+// dpad (ромб) = 3 кнопки × 64 + 2 зазора × 14 = 220; split = 2 × 64 + 14 = 142; swipe = 0.
+export const CTRL_HEIGHTS = { dpad: 220, split: 142, swipe: 0 } as const;
 
 export interface BoardPxOpts {
   min?: number; // нижний предел поля

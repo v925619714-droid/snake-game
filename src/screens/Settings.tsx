@@ -97,6 +97,10 @@ export default function Settings({ onBack }: { onBack: () => void }) {
   const [scheme, setScheme] = useState<CtrlScheme>(getCtrlScheme());
   const [side, setSide] = useState<CtrlSide>(getCtrlSide());
   const [lang, setLangState] = useState<Lang>(getLang());
+  const [saveMsg, setSaveMsg] = useState('');
+  // Ошибка записи в AsyncStorage больше не глотается молча (C): пользователь видит,
+  // что настройка может сброситься после перезапуска.
+  const guard = (p: Promise<void>) => p.catch(() => setSaveMsg(t('saveError')));
 
   return (
     <ScreenShell maxWidth={412}>
@@ -110,7 +114,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           a11y="set-lang"
           onChange={(v) => {
             setLangState(v);
-            void saveLang(v);
+            guard(saveLang(v));
           }}
         />
         <View style={styles.sep} />
@@ -121,7 +125,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           a11y="set-sound"
           onValueChange={(v) => {
             setSound(v);
-            void setMuted(!v);
+            guard(setMuted(!v));
           }}
         />
         <View style={styles.sep} />
@@ -132,7 +136,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           a11y="set-haptics"
           onValueChange={(v) => {
             setHap(v);
-            void setHaptics(v);
+            guard(setHaptics(v));
           }}
         />
         <View style={styles.sep} />
@@ -143,7 +147,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           a11y="set-colorblind"
           onValueChange={(v) => {
             setCb(v);
-            void setColorblind(v);
+            guard(setColorblind(v));
           }}
         />
         <View style={styles.sep} />
@@ -159,7 +163,7 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           a11y="set-ctrl"
           onChange={(v) => {
             setScheme(v);
-            void setCtrlScheme(v);
+            guard(setCtrlScheme(v));
           }}
         />
         {scheme === 'dpad' && (
@@ -177,12 +181,14 @@ export default function Settings({ onBack }: { onBack: () => void }) {
               a11y="set-side"
               onChange={(v) => {
                 setSide(v);
-                void setCtrlSide(v);
+                guard(setCtrlSide(v));
               }}
             />
           </>
         )}
       </View>
+
+      {!!saveMsg && <Text style={styles.saveMsg}>{saveMsg}</Text>}
 
       <GameButton title={t('back')} variant="ghost" onPress={onBack} a11y="settings-back" />
     </ScreenShell>
@@ -219,4 +225,5 @@ const styles = StyleSheet.create({
   segBtnActive: { backgroundColor: C.btnPressed, borderColor: C.borderGlow },
   segText: { fontFamily: fonts.bodyBold, color: C.textDim, fontSize: 13 },
   segTextActive: { color: C.brand1 },
+  saveMsg: { fontFamily: fonts.body, color: C.danger, fontSize: 13, textAlign: 'center' },
 });

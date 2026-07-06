@@ -10,7 +10,7 @@ import { play as playSfx } from '../lib/sound';
 import { shareResult } from '../lib/share';
 import { hLight, hMedium, hSuccess, hError, colorblindOn, getCtrlScheme, getCtrlSide } from '../lib/settings';
 import { palette, fonts, radius, shade, glow } from '../theme/tokens';
-import { TouchScale, Confetti } from '../ui/anim';
+import { TouchScale, Confetti, PulsingDot } from '../ui/anim';
 import { Dpad } from '../ui/Dpad';
 import { GameButton } from '../ui/GameButton';
 import { GameInput } from '../ui/GameInput';
@@ -302,9 +302,12 @@ export default function DuelGame({
               <Text style={[styles.rankTier, { color: tier.color }]}>{tierName(tier.name)}</Text>
               <Text style={styles.rankRating}>{myRating}</Text>
             </View>
-            <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
-              {conn === 'ready' ? t('opponentFound') : t('findingOpponent')}
-            </Text>
+            <View style={styles.waitRow}>
+              {conn !== 'ready' && <PulsingDot />}
+              <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
+                {conn === 'ready' ? t('opponentFound') : t('findingOpponent')}
+              </Text>
+            </View>
             <GameButton title={t('cancel')} variant="secondary" onPress={cancelSearch} a11y="cancel-search" />
           </View>
         )}
@@ -334,7 +337,10 @@ export default function DuelGame({
 
         {!ranked && conn === 'searching' && (
           <View style={styles.lobby}>
-            <Text style={styles.status} accessibilityLabel="conn-searching">{t('searchingOpponent')}</Text>
+            <View style={styles.waitRow}>
+              <PulsingDot />
+              <Text style={styles.status} accessibilityLabel="conn-searching">{t('searchingOpponent')}</Text>
+            </View>
             <GameButton title={t('cancel')} variant="secondary" onPress={cancelSearch} a11y="cancel-search" />
           </View>
         )}
@@ -356,17 +362,23 @@ export default function DuelGame({
                       a11y="challenge-friend"
                       style={styles.copyBtn}
                     />
-                    <GameButton title={t('copyInviteLink')} variant="ghost" onPress={copyInvite} a11y="copy-invite" />
+                    {/* Вид действия-ссылки (подчёркивание), а не третьей кнопки (C). */}
+                    <TouchScale onPress={copyInvite} accessibilityLabel="copy-invite" style={styles.linkBtn}>
+                      <Text style={styles.linkText}>{t('copyInviteLink')}</Text>
+                    </TouchScale>
                   </>
                 )}
               </CodeBox>
             )}
-            <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
-              {conn === 'connecting' && t('connecting')}
-              {conn === 'waiting' && t('waitingOpponent')}
-              {conn === 'ready' && role === 'host' && t('opponentJoined')}
-              {conn === 'ready' && role === 'guest' && t('waitingHost')}
-            </Text>
+            <View style={styles.waitRow}>
+              {conn !== 'ready' && <PulsingDot />}
+              <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
+                {conn === 'connecting' && t('connecting')}
+                {conn === 'waiting' && t('waitingOpponent')}
+                {conn === 'ready' && role === 'host' && t('opponentJoined')}
+                {conn === 'ready' && role === 'guest' && t('waitingHost')}
+              </Text>
+            </View>
             {conn === 'ready' && role === 'host' && (
               <GameButton title={t('start')} onPress={startGame} a11y="duel-start" />
             )}
@@ -551,6 +563,9 @@ const styles = StyleSheet.create({
   codeInput: { width: 130, textAlign: 'center' },
   copyBtn: { paddingVertical: 8, paddingHorizontal: 18 },
   status: { fontFamily: fonts.body, color: palette.text, fontSize: 16 },
+  waitRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  linkBtn: { paddingVertical: 4, paddingHorizontal: 4 },
+  linkText: { fontFamily: fonts.body, color: palette.textDim, fontSize: 13, textDecorationLine: 'underline' },
   rules: { gap: 4, alignItems: 'center', marginTop: 4 },
   rulesText: { fontFamily: fonts.body, color: palette.textDim, fontSize: 13, textAlign: 'center' },
   hud: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
