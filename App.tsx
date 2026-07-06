@@ -1097,11 +1097,23 @@ function QuestsOverlay({
   onClaim: (type: string) => void;
   onClose: () => void;
 }) {
+  // Локализованный текст квеста: шаблон по type из словаря (сохранённые квесты
+  // содержат английский label — не используем его, чтобы язык переключался).
+  const qKey: Record<string, Parameters<typeof t>[0]> = {
+    solo_score: 'qSoloScore',
+    eat_solo: 'qEatSolo',
+    win_ranked: 'qWinRanked',
+    play_ranked: 'qPlayRanked',
+  };
+  const localQuestLabel = (q: Quest): string => {
+    const k = qKey[q.type];
+    return k ? t(k).replace('{t}', String(q.target)) : questLabel(q);
+  };
   return (
     <View style={styles.shopOverlay}>
       <View style={styles.shopCard}>
         <View style={styles.shopHeader}>
-          <Text style={styles.shopTitle}>Daily quests</Text>
+          <Text style={styles.shopTitle}>{t('questsTitle')}</Text>
         </View>
         <View style={{ gap: 10 }}>
           {items.map((q) => {
@@ -1110,7 +1122,7 @@ function QuestsOverlay({
             return (
               <View key={q.type} style={styles.questRow}>
                 <View style={{ flex: 1, gap: 6 }}>
-                  <Text style={styles.questLabel}>{questLabel(q)}</Text>
+                  <Text style={styles.questLabel}>{localQuestLabel(q)}</Text>
                   <View style={styles.questBar}>
                     <View style={[styles.questBarFill, { width: `${pct * 100}%` }]} />
                   </View>
@@ -1120,7 +1132,7 @@ function QuestsOverlay({
                 </View>
                 {q.claimed ? (
                   <View style={[styles.skinBtn, styles.skinBtnActive]}>
-                    <Text style={styles.skinBtnActiveText}>Done</Text>
+                    <Text style={styles.skinBtnActiveText}>{t('done')}</Text>
                   </View>
                 ) : (
                   <TouchScale
@@ -1128,7 +1140,7 @@ function QuestsOverlay({
                     onPress={() => can && onClaim(q.type)}
                     accessibilityLabel={`claim-${q.type}`}
                   >
-                    <Text style={[styles.skinBtnText, !can && styles.skinBtnDisabledText]}>Claim</Text>
+                    <Text style={[styles.skinBtnText, !can && styles.skinBtnDisabledText]}>{t('claim')}</Text>
                   </TouchScale>
                 )}
               </View>
@@ -1136,7 +1148,7 @@ function QuestsOverlay({
           })}
         </View>
         <TouchScale style={styles.closeBtn} onPress={onClose} accessibilityLabel="quests-close">
-          <Text style={styles.closeBtnText}>Close</Text>
+          <Text style={styles.closeBtnText}>{t('close')}</Text>
         </TouchScale>
       </View>
     </View>

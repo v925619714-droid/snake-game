@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { palette as C, gradients, fonts } from '../theme/tokens';
 import { TouchScale } from '../ui/anim';
 import { type AuthUser, deleteAccount, sendEmailCode, signOut, verifyEmailCode } from '../lib/auth';
+import { t } from '../lib/i18n';
 
 const PRIVACY_URL = 'https://snake.skillmake.ru/privacy.html';
 
@@ -39,7 +40,7 @@ export default function Account({
   const send = async () => {
     if (cooldown > 0 || busy) return;
     if (!email.includes('@')) {
-      setMsg('Enter a valid email');
+      setMsg(t('enterValidEmail'));
       return;
     }
     setBusy(true);
@@ -49,16 +50,16 @@ export default function Account({
     if (r.ok) {
       setStage('code');
       setCooldown(30); // не даём спамить отправку
-      setMsg('Code sent — check your email.');
+      setMsg(t('codeSent'));
     } else {
       // generic-сообщение (не светим внутренние ошибки провайдера)
-      setMsg('Could not send the code. Please try again shortly.');
+      setMsg(t('codeSendFail'));
     }
   };
 
   const verify = async () => {
     if (code.trim().length < 4) {
-      setMsg('Enter the code from the email');
+      setMsg(t('enterCode'));
       return;
     }
     setBusy(true);
@@ -66,13 +67,13 @@ export default function Account({
     const r = await verifyEmailCode(email, code);
     setBusy(false);
     if (r.ok) {
-      setMsg('Signed in! Taking you back…');
+      setMsg(t('signedInMsg'));
       setStage('idle');
       setCode('');
       onChanged();
       setTimeout(onBack, 900); // авто-возврат на главный экран
     } else {
-      setMsg(r.error || 'Invalid or expired code.');
+      setMsg(r.error || t('invalidCode'));
     }
   };
 
@@ -86,7 +87,7 @@ export default function Account({
   const del = async () => {
     if (!confirmDel) {
       setConfirmDel(true);
-      setMsg('This permanently deletes your account and all progress. Tap again to confirm.');
+      setMsg(t('deleteWarn'));
       return;
     }
     setBusy(true);
@@ -97,27 +98,27 @@ export default function Account({
     if (r.ok) {
       onDeleted();
     } else {
-      setMsg(r.error || 'Could not delete the account.');
+      setMsg(r.error || t('deleteFail'));
     }
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-      <Text style={styles.title}>Account</Text>
+      <Text style={styles.title}>{t('account')}</Text>
 
       {signedIn ? (
         <View style={styles.box}>
-          <Text style={styles.label}>SIGNED IN</Text>
+          <Text style={styles.label}>{t('signedInLabel')}</Text>
           <Text style={styles.email}>{user?.email}</Text>
-          <Text style={styles.hint}>Your rating and progress sync on every device with this email.</Text>
+          <Text style={styles.hint}>{t('syncHint')}</Text>
           <TouchScale style={styles.ghost} onPress={out} disabled={busy} accessibilityLabel="sign-out">
-            <Text style={styles.ghostText}>{busy ? 'Signing out…' : 'Sign out'}</Text>
+            <Text style={styles.ghostText}>{busy ? t('signingOut') : t('signOut')}</Text>
           </TouchScale>
         </View>
       ) : (
         <View style={styles.box}>
-          <Text style={styles.label}>GUEST</Text>
-          <Text style={styles.hint}>Sign in with email to save your progress and continue on any device (phone, browser).</Text>
+          <Text style={styles.label}>{t('guestLabel')}</Text>
+          <Text style={styles.hint}>{t('guestHint')}</Text>
 
           <TextInput
             style={styles.input}
@@ -135,7 +136,7 @@ export default function Account({
           {stage === 'idle' ? (
             <TouchScale style={styles.cta} onPress={send} disabled={busy || cooldown > 0} accessibilityLabel="send-code">
               <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaGrad}>
-                <Text style={styles.ctaText}>{cooldown > 0 ? `Resend in ${cooldown}s` : busy ? 'Sending…' : 'Send code'}</Text>
+                <Text style={styles.ctaText}>{cooldown > 0 ? `${t('resendIn')} ${cooldown}s` : busy ? t('sending') : t('sendCodeBtn')}</Text>
               </LinearGradient>
             </TouchScale>
           ) : (
@@ -144,18 +145,18 @@ export default function Account({
                 style={styles.input}
                 value={code}
                 onChangeText={setCode}
-                placeholder="Code from email"
+                placeholder={t('codePlaceholder')}
                 placeholderTextColor={C.textFaint}
                 keyboardType="number-pad"
                 accessibilityLabel="account-code"
               />
               <TouchScale style={styles.cta} onPress={verify} disabled={busy} accessibilityLabel="verify-code">
                 <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaGrad}>
-                  <Text style={styles.ctaText}>{busy ? 'Verifying…' : 'Verify & sign in'}</Text>
+                  <Text style={styles.ctaText}>{busy ? t('verifying') : t('verifySignIn')}</Text>
                 </LinearGradient>
               </TouchScale>
               <TouchScale style={styles.linkBtn} onPress={() => { setStage('idle'); setCode(''); setMsg(''); }} accessibilityLabel="change-email">
-                <Text style={styles.linkText}>Use a different email</Text>
+                <Text style={styles.linkText}>{t('useDifferentEmail')}</Text>
               </TouchScale>
             </>
           )}
@@ -166,16 +167,16 @@ export default function Account({
 
       <View style={styles.footRow}>
         <TouchScale style={styles.linkBtn} onPress={() => Linking.openURL(PRIVACY_URL).catch(() => {})} accessibilityLabel="privacy-policy">
-          <Text style={styles.linkText}>Privacy Policy</Text>
+          <Text style={styles.linkText}>{t('privacyPolicy')}</Text>
         </TouchScale>
         <Text style={styles.dot}>·</Text>
         <TouchScale style={styles.linkBtn} onPress={del} disabled={busy} accessibilityLabel="delete-account">
-          <Text style={[styles.linkText, styles.delText]}>{confirmDel ? 'Confirm delete' : 'Delete account'}</Text>
+          <Text style={[styles.linkText, styles.delText]}>{confirmDel ? t('confirmDelete') : t('deleteAccount')}</Text>
         </TouchScale>
       </View>
 
       <TouchScale style={styles.back} onPress={onBack} accessibilityLabel="account-back">
-        <Text style={styles.backText}>Back</Text>
+        <Text style={styles.backText}>{t('back')}</Text>
       </TouchScale>
     </View>
   );

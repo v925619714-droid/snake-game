@@ -4,14 +4,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { palette as C, gradients, fonts, elevation } from '../theme/tokens';
 import { TouchScale, FadePop } from '../ui/anim';
 import { EVENTS, track } from '../lib/analytics';
+import { t, type StringKey } from '../lib/i18n';
 
 // Первый запуск: коротко объясняем суть и (главное) правила дуэли — без этого
 // новички не понимают «ешь свой цвет / выживай». Бьёт по D1-удержанию (T26).
 
 interface Slide {
   key: string;
-  title: string;
-  body: string;
+  title: StringKey; // ключи i18n — слайды локализуются при рендере
+  body: StringKey;
   visual: () => ReactElement;
 }
 
@@ -30,8 +31,8 @@ function Dot({ color, glow }: { color: string; glow?: boolean }) {
 const SLIDES: Slide[] = [
   {
     key: 'welcome',
-    title: 'Two snakes. One survivor.',
-    body: 'Shake Work Off is a fast color duel. Outlast your rival to win the round — best of 3.',
+    title: 'ob1Title',
+    body: 'ob1Body',
     visual: () => (
       <View style={styles.vizRow}>
         <Dot color={C.redHead} glow />
@@ -46,25 +47,25 @@ const SLIDES: Slide[] = [
   },
   {
     key: 'colors',
-    title: 'Eat ONLY your color',
-    body: 'Your color feeds and grows you. The other color is instant death. Touch a wall or your rival and you lose too.',
+    title: 'ob2Title',
+    body: 'ob2Body',
     visual: () => (
       <View style={styles.vizRow}>
         <View style={styles.vizItem}>
           <View style={[styles.foodDot, { backgroundColor: C.red, shadowColor: C.red }]} />
-          <Text style={[styles.vizMark, { color: C.accent }]}>✓ eat</Text>
+          <Text style={[styles.vizMark, { color: C.accent }]}>{t('obEat')}</Text>
         </View>
         <View style={styles.vizItem}>
           <View style={[styles.foodDot, { backgroundColor: C.blue, shadowColor: C.blue }]} />
-          <Text style={[styles.vizMark, { color: C.danger }]}>✕ death</Text>
+          <Text style={[styles.vizMark, { color: C.danger }]}>{t('obDeath')}</Text>
         </View>
       </View>
     ),
   },
   {
     key: 'boost',
-    title: 'Grab the gold ⚡',
-    body: 'Gold food gives a speed burst. Race ahead, cut your rival off and force them to crash. Rounds end only on a crash.',
+    title: 'ob3Title',
+    body: 'ob3Body',
     visual: () => (
       <View style={styles.vizRow}>
         <View style={[styles.foodDot, styles.boostDot]}>
@@ -76,8 +77,8 @@ const SLIDES: Slide[] = [
   },
   {
     key: 'ranked',
-    title: 'Climb & carry your progress',
-    body: 'Win ranked matches to rank up. Sign in with your email to sync coins, skins and rating across all your devices.',
+    title: 'ob4Title',
+    body: 'ob4Body',
     visual: () => (
       <View style={styles.vizRow}>
         <LinearGradient colors={gradients.ranked} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.badge}>
@@ -111,15 +112,15 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       <View style={styles.top}>
         {!last && (
           <TouchScale style={styles.skip} onPress={() => finish(true)} accessibilityLabel="onboarding-skip">
-            <Text style={styles.skipText}>Skip</Text>
+            <Text style={styles.skipText}>{t('skip')}</Text>
           </TouchScale>
         )}
       </View>
 
       <FadePop key={slide.key} style={styles.card}>
         <View style={styles.viz}>{slide.visual()}</View>
-        <Text style={styles.title}>{slide.title}</Text>
-        <Text style={styles.body}>{slide.body}</Text>
+        <Text style={styles.title}>{t(slide.title)}</Text>
+        <Text style={styles.body}>{t(slide.body)}</Text>
       </FadePop>
 
       <View style={styles.dots}>
@@ -134,7 +135,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         accessibilityLabel={last ? 'onboarding-start' : 'onboarding-next'}
       >
         <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cta}>
-          <Text style={styles.ctaText}>{last ? "Let's play" : 'Next'}</Text>
+          <Text style={styles.ctaText}>{last ? t('letsPlay') : t('next')}</Text>
         </LinearGradient>
       </TouchScale>
     </LinearGradient>

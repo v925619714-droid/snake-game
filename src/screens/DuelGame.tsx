@@ -20,6 +20,7 @@ import { hLight, hMedium, hSuccess, hError, colorblindOn, getCtrlScheme, getCtrl
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import { Dpad } from '../ui/Dpad';
+import { t } from '../lib/i18n';
 
 const C = {
   bg: '#0B0F17',
@@ -295,20 +296,17 @@ export default function DuelGame({
   if (!duel) {
     return (
       <View style={[styles.container, pad]}>
-        <Text style={styles.title}>{ranked ? 'Ranked' : 'Color Duel'}</Text>
+        <Text style={styles.title}>{ranked ? t('ranked') : t('colorDuel')}</Text>
 
         {joinFailed && (
           <View style={styles.lobby}>
-            <Text style={styles.status}>Room not found</Text>
-            <Text style={[styles.subtle, { textAlign: 'center' }]}>
-              A friend's room stays active only while they keep Shake Work Off open on the invite
-              screen. Ask them to tap "Play with a friend" again — or:
-            </Text>
+            <Text style={styles.status}>{t('roomNotFound')}</Text>
+            <Text style={[styles.subtle, { textAlign: 'center' }]}>{t('roomNotFoundHint')}</Text>
             <TouchScale style={styles.bigBtn} onPress={() => { if (autoJoin) rejoin(autoJoin); }} accessibilityLabel="retry-join">
-              <Text style={styles.bigBtnText}>Try again</Text>
+              <Text style={styles.bigBtnText}>{t('tryAgain')}</Text>
             </TouchScale>
             <TouchScale style={styles.altBtn} onPress={() => playBot(myRating)} accessibilityLabel="play-bot">
-              <Text style={styles.altBtnText}>Play vs bot</Text>
+              <Text style={styles.altBtnText}>{t('playVsBot')}</Text>
             </TouchScale>
           </View>
         )}
@@ -320,10 +318,10 @@ export default function DuelGame({
               <Text style={styles.rankRating}>{myRating}</Text>
             </View>
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
-              {conn === 'ready' ? 'Opponent found! Starting…' : 'Finding a ranked opponent…'}
+              {conn === 'ready' ? t('opponentFound') : t('findingOpponent')}
             </Text>
             <TouchScale style={styles.altBtn} onPress={cancelSearch} accessibilityLabel="cancel-search">
-              <Text style={styles.altBtnText}>Cancel</Text>
+              <Text style={styles.altBtnText}>{t('cancel')}</Text>
             </TouchScale>
           </View>
         )}
@@ -331,12 +329,12 @@ export default function DuelGame({
         {!ranked && conn === 'idle' && (
           <View style={styles.lobby}>
             <TouchScale style={styles.bigBtn} onPress={onQuick} accessibilityLabel="quick-match">
-              <Text style={styles.bigBtnText}>Quick match</Text>
+              <Text style={styles.bigBtnText}>{t('quickMatch')}</Text>
             </TouchScale>
-            <Text style={styles.subtle}>random opponent</Text>
+            <Text style={styles.subtle}>{t('randomOpponent')}</Text>
             <View style={styles.divider} />
             <TouchScale style={styles.altBtn} onPress={onCreate} accessibilityLabel="create-room">
-              <Text style={styles.altBtnText}>Play with a friend</Text>
+              <Text style={styles.altBtnText}>{t('playWithFriend')}</Text>
             </TouchScale>
             <View style={styles.joinRow}>
               <TextInput
@@ -354,7 +352,7 @@ export default function DuelGame({
                 onPress={onJoinCode}
                 accessibilityLabel="join-room"
               >
-                <Text style={styles.altBtnText}>Join</Text>
+                <Text style={styles.altBtnText}>{t('join')}</Text>
               </TouchScale>
             </View>
             <Rules />
@@ -363,9 +361,9 @@ export default function DuelGame({
 
         {!ranked && conn === 'searching' && (
           <View style={styles.lobby}>
-            <Text style={styles.status} accessibilityLabel="conn-searching">Searching for an opponent…</Text>
+            <Text style={styles.status} accessibilityLabel="conn-searching">{t('searchingOpponent')}</Text>
             <TouchScale style={styles.altBtn} onPress={cancelSearch} accessibilityLabel="cancel-search">
-              <Text style={styles.altBtnText}>Cancel</Text>
+              <Text style={styles.altBtnText}>{t('cancel')}</Text>
             </TouchScale>
           </View>
         )}
@@ -374,41 +372,41 @@ export default function DuelGame({
           <View style={styles.lobby}>
             {role === 'host' && (
               <View style={styles.codeBox}>
-                <Text style={styles.codeLabel}>Room code</Text>
+                <Text style={styles.codeLabel}>{t('roomCode')}</Text>
                 <Text style={styles.codeValue} accessibilityLabel={`room-code-${code}`}>{code}</Text>
                 {!!inviteUrl(code, myId) && (
                   <>
                     <TouchScale style={styles.copyBtn} onPress={challengeFriend} accessibilityLabel="challenge-friend">
-                      <Text style={styles.copyBtnText}>{copied ? 'Link copied!' : 'Challenge a friend'}</Text>
+                      <Text style={styles.copyBtnText}>{copied ? t('linkCopied') : t('challengeFriendBtn')}</Text>
                     </TouchScale>
                     <TouchScale style={styles.linkBtn} onPress={copyInvite} accessibilityLabel="copy-invite">
-                      <Text style={styles.linkText}>Copy invite link</Text>
+                      <Text style={styles.linkText}>{t('copyInviteLink')}</Text>
                     </TouchScale>
                   </>
                 )}
-                <Text style={styles.codeHint}>Send the code or link to a friend</Text>
-                <Text style={styles.codeHint}>Keep this screen open until they join</Text>
+                <Text style={styles.codeHint}>{t('sendCodeHint')}</Text>
+                <Text style={styles.codeHint}>{t('keepOpenHint')}</Text>
               </View>
             )}
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
-              {conn === 'connecting' && 'Connecting…'}
-              {conn === 'waiting' && 'Waiting for opponent…'}
-              {conn === 'ready' && role === 'host' && 'Opponent joined!'}
-              {conn === 'ready' && role === 'guest' && 'Waiting for host to start…'}
+              {conn === 'connecting' && t('connecting')}
+              {conn === 'waiting' && t('waitingOpponent')}
+              {conn === 'ready' && role === 'host' && t('opponentJoined')}
+              {conn === 'ready' && role === 'guest' && t('waitingHost')}
             </Text>
             {conn === 'ready' && role === 'host' && (
               <TouchScale style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-start">
-                <Text style={styles.bigBtnText}>Start</Text>
+                <Text style={styles.bigBtnText}>{t('start')}</Text>
               </TouchScale>
             )}
             <Rules />
           </View>
         )}
 
-        {conn === 'error' && <Text style={styles.status}>Connection error</Text>}
+        {conn === 'error' && <Text style={styles.status}>{t('connectionError')}</Text>}
 
         <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{t('back')}</Text>
         </TouchScale>
       </View>
     );
@@ -424,25 +422,27 @@ export default function DuelGame({
     <View style={[styles.container, pad]}>
       <View style={styles.hud}>
         <ScoreChip
-          label="You"
+          label={t('you')}
           color={mine.head}
           wins={duel.matchWins[you]}
           round={duel.roundScore[you]}
           rating={ranked ? myRating : undefined}
         />
         <View style={styles.roundBadge}>
-          <Text style={styles.roundText}>{ranked ? 'Ranked' : `Round ${duel.round}`}</Text>
-          <Text style={styles.roundSub}>don't crash</Text>
+          <Text style={styles.roundText}>{ranked ? t('ranked') : `${t('round')} ${duel.round}`}</Text>
+          <Text style={styles.roundSub}>{t('dontCrash')}</Text>
         </View>
         <ScoreChip
-          label="Opp"
+          label={t('oppLabel')}
           color={P[opp].head}
           wins={duel.matchWins[opp]}
           round={duel.roundScore[opp]}
           rating={ranked && typeof oppRating === 'number' ? oppRating : undefined}
         />
       </View>
-      <Text style={[styles.youHint, { color: mine.head }]}>You are {mine.name} — eat {mine.name} food</Text>
+      <Text style={[styles.youHint, { color: mine.head }]}>
+        {t('youAreEat').split('{c}').join(t(you === 0 ? 'colorRed' : 'colorBlue'))}
+      </Text>
 
       {(() => {
         const total = duel.roundScore[you] + duel.roundScore[opp];
@@ -522,9 +522,9 @@ export default function DuelGame({
             <View style={styles.overlay}>
               <FadePop style={styles.overlayInner}>
                 <Text style={styles.overlayTitle}>
-                  {duel.roundWinner === -1 ? 'Draw!' : duel.roundWinner === you ? 'Round won!' : 'Round lost'}
+                  {duel.roundWinner === -1 ? t('draw') : duel.roundWinner === you ? t('roundWon') : t('roundLost')}
                 </Text>
-                <Text style={styles.overlaySub}>Next round…</Text>
+                <Text style={styles.overlaySub}>{t('nextRound')}</Text>
               </FadePop>
             </View>
           )}
@@ -532,10 +532,10 @@ export default function DuelGame({
           {netError && duel.status !== 'matchOver' && (
             <View style={styles.overlay}>
               <FadePop style={styles.overlayInner}>
-                <Text style={styles.overlayTitle}>Connection lost</Text>
-                <Text style={styles.overlaySub}>Reconnecting…</Text>
+                <Text style={styles.overlayTitle}>{t('connectionLost')}</Text>
+                <Text style={styles.overlaySub}>{t('reconnecting')}</Text>
                 <TouchScale style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-neterror-leave">
-                  <Text style={styles.bigBtnText}>Leave</Text>
+                  <Text style={styles.bigBtnText}>{t('leave')}</Text>
                 </TouchScale>
               </FadePop>
             </View>
@@ -546,9 +546,9 @@ export default function DuelGame({
               {duel.matchWinner === you && <Confetti />}
               <FadePop style={styles.overlayInner}>
                 <Text style={styles.overlayTitle}>
-                  {duel.matchWinner === you ? 'You win!' : duel.matchWinner === -1 ? "It's a draw" : 'You lose'}
+                  {duel.matchWinner === you ? t('youWin') : duel.matchWinner === -1 ? t('itsADraw') : t('youLose')}
                 </Text>
-                {oppLeft && <Text style={styles.overlaySub}>Opponent left — you win by forfeit</Text>}
+                {oppLeft && <Text style={styles.overlaySub}>{t('forfeitWin')}</Text>}
                 <Text style={styles.overlaySub}>{duel.matchWins[you]} : {duel.matchWins[opp]}</Text>
                 {ranked && ratingChange && (
                   <Text style={[styles.ratingDelta, { color: ratingChange.delta >= 0 ? C.accent : '#ff6b6b' }]}>
@@ -557,14 +557,14 @@ export default function DuelGame({
                 )}
                 {ranked || oppLeft ? (
                   <TouchScale style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-back">
-                    <Text style={styles.bigBtnText}>Done</Text>
+                    <Text style={styles.bigBtnText}>{t('done')}</Text>
                   </TouchScale>
                 ) : role === 'host' ? (
                   <TouchScale style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-restart">
-                    <Text style={styles.bigBtnText}>Play again</Text>
+                    <Text style={styles.bigBtnText}>{t('playAgain')}</Text>
                   </TouchScale>
                 ) : (
-                  <Text style={styles.overlaySub}>Waiting for host…</Text>
+                  <Text style={styles.overlaySub}>{t('waitingHost')}</Text>
                 )}
                 <TouchScale
                   style={styles.shareBtn}
@@ -576,14 +576,14 @@ export default function DuelGame({
                     shareResult(msg).then((o) => {
                       track(EVENTS.share, { where: 'duel', result: won ? 'win' : 'other', outcome: o });
                       if (o === 'copied') {
-                        setShareNote('Link copied!');
+                        setShareNote(t('linkCopied'));
                         setTimeout(() => setShareNote(''), 1500);
                       }
                     });
                   }}
                   accessibilityLabel="share-result"
                 >
-                  <Text style={styles.shareBtnText}>{shareNote || 'Share result'}</Text>
+                  <Text style={styles.shareBtnText}>{shareNote || t('shareResultBtn')}</Text>
                 </TouchScale>
               </FadePop>
             </View>
@@ -593,7 +593,7 @@ export default function DuelGame({
       <Dpad onTurn={doTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
 
       <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
-        <Text style={styles.backText}>Leave</Text>
+        <Text style={styles.backText}>{t('leave')}</Text>
       </TouchScale>
     </View>
     </GestureDetector>
@@ -603,8 +603,8 @@ export default function DuelGame({
 function Rules() {
   return (
     <View style={styles.rules}>
-      <Text style={styles.rulesText}>Eat only YOUR color. Eating the other color = you lose.</Text>
-      <Text style={styles.rulesText}>Avoid walls and the opponent. Best of 3 rounds.</Text>
+      <Text style={styles.rulesText}>{t('rules1')}</Text>
+      <Text style={styles.rulesText}>{t('rules2')}</Text>
     </View>
   );
 }
@@ -630,9 +630,9 @@ function ScoreChip({
       </View>
       <Text style={[styles.chipWins, { color }]} accessibilityLabel={`${label}-wins-${wins}`}>{wins}</Text>
       {typeof rating === 'number' ? (
-        <Text style={styles.chipRound}>{rating} pts</Text>
+        <Text style={styles.chipRound}>{rating} {t('ptsSuffix')}</Text>
       ) : (
-        <Text style={styles.chipRound}>{round} this round</Text>
+        <Text style={styles.chipRound}>{round} {t('thisRound')}</Text>
       )}
     </View>
   );

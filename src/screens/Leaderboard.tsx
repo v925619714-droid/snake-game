@@ -6,6 +6,7 @@ import { type LeaderRow, fetchLeaderboard } from '../lib/leaderboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fonts, tierStyle } from '../theme/tokens';
 import { TouchScale } from '../ui/anim';
+import { t as tr } from '../lib/i18n';
 
 const C = {
   bg: '#0B0F17',
@@ -31,12 +32,12 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-      <Text style={styles.title}>Leaderboard</Text>
+      <Text style={styles.title}>{tr('leaderboard')}</Text>
 
       {rows === null ? (
         <ActivityIndicator color={C.accent} accessibilityLabel="lb-loading" />
       ) : rows.length === 0 ? (
-        <Text style={styles.empty} accessibilityLabel="lb-empty">No players yet — play a ranked match!</Text>
+        <Text style={styles.empty} accessibilityLabel="lb-empty">{tr('lbEmpty')}</Text>
       ) : (
         <ScrollView style={styles.list} contentContainerStyle={{ gap: 8 }}>
           {rows.map((r, i) => {
@@ -75,10 +76,10 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
       )}
 
       <TouchScale style={styles.btn} onPress={load} accessibilityLabel="lb-refresh">
-        <Text style={styles.btnText}>Refresh</Text>
+        <Text style={styles.btnText}>{tr('refresh')}</Text>
       </TouchScale>
       <TouchScale style={styles.back} onPress={onBack} accessibilityLabel="lb-back">
-        <Text style={styles.backText}>Back</Text>
+        <Text style={styles.backText}>{tr('back')}</Text>
       </TouchScale>
     </View>
   );

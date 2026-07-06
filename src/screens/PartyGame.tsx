@@ -29,6 +29,7 @@ import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import { hLight, hSuccess, hError, getCtrlScheme, getCtrlSide } from '../lib/settings';
 import { Dpad } from '../ui/Dpad';
+import { t as tr } from '../lib/i18n';
 import { play as playSfx } from '../lib/sound';
 import { shareResult, GAME_URL } from '../lib/share';
 import { EVENTS, track } from '../lib/analytics';
@@ -36,7 +37,6 @@ import { EVENTS, track } from '../lib/analytics';
 const TICK_MS = 150;
 const ROUND_BREAK_MS = 2600; // пауза между раундами best-of (показываем итог раунда)
 const COUNT_OPTIONS = [5, 6, 8, 10];
-const STAKE_TEMPLATES = ["doesn't work today", 'skips standup', 'no chores today', 'picks lunch'];
 
 // Ссылка-инвайт в командную комнату: на web берём текущий origin (домен), иначе GAME_URL.
 function teamInviteUrl(code: string): string {
@@ -261,8 +261,8 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
   if (!state) {
     return (
       <View style={[styles.container, pad]}>
-        <Text style={styles.title}>Practice</Text>
-        <Text style={styles.subtitle}>Last snake standing — vs bots (local)</Text>
+        <Text style={styles.title}>{tr('practice')}</Text>
+        <Text style={styles.subtitle}>{tr('practiceSub')}</Text>
         <View style={styles.countRow}>
           {COUNT_OPTIONS.map((n) => (
             <TouchScale
@@ -275,12 +275,12 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
             </TouchScale>
           ))}
         </View>
-        <Text style={styles.subtle}>players</Text>
+        <Text style={styles.subtle}>{tr('players')}</Text>
         <TouchScale style={styles.bigBtn} onPress={() => start(count)} accessibilityLabel="party-start">
-          <Text style={styles.bigBtnText}>Start</Text>
+          <Text style={styles.bigBtnText}>{tr('start')}</Text>
         </TouchScale>
         <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{tr('back')}</Text>
         </TouchScale>
       </View>
     );
@@ -386,25 +386,25 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
   if (room.conn === 'idle' || room.conn === 'error') {
     return (
       <View style={[styles.container, pad]}>
-        <Text style={styles.title}>Team room</Text>
-        <Text style={styles.subtitle}>Gather your team (5–10) — winner doesn't work today</Text>
+        <Text style={styles.title}>{tr('teamRoom')}</Text>
+        <Text style={styles.subtitle}>{tr('teamRoomSub')}</Text>
         {!!autoJoin && (
           <Text style={[styles.subtle, { color: C.accent }]}>
-            You're invited to team {joinCode || autoJoin} — enter your name, then Join
+            {tr('invitedToTeam').split('{c}').join(joinCode || autoJoin)}
           </Text>
         )}
-        {room.conn === 'error' && <Text style={styles.errText}>Connection error — try again</Text>}
+        {room.conn === 'error' && <Text style={styles.errText}>{tr('connErrRetry')}</Text>}
         <TextInput
           style={styles.nameInput}
           value={name}
           onChangeText={setName}
-          placeholder="Your name"
+          placeholder={tr('yourName')}
           placeholderTextColor={C.textDim}
           maxLength={20}
           accessibilityLabel="party-name"
         />
         <TouchScale style={styles.bigBtn} onPress={() => room.createRoom(name)} accessibilityLabel="party-create">
-          <Text style={styles.bigBtnText}>Create team room</Text>
+          <Text style={styles.bigBtnText}>{tr('createTeamRoom')}</Text>
         </TouchScale>
         <View style={styles.joinRow}>
           <TextInput
@@ -422,11 +422,11 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
             onPress={() => joinCode.length >= 4 && room.joinRoom(joinCode, name)}
             accessibilityLabel="party-join"
           >
-            <Text style={styles.altBtnText}>Join</Text>
+            <Text style={styles.altBtnText}>{tr('join')}</Text>
           </TouchScale>
         </View>
         <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{tr('back')}</Text>
         </TouchScale>
       </View>
     );
@@ -438,17 +438,17 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
     const enough = room.players.length >= PARTY_MIN;
     return (
       <View style={[styles.container, pad]}>
-        <Text style={styles.title}>Team room</Text>
+        <Text style={styles.title}>{tr('teamRoom')}</Text>
         <View style={styles.codeBox}>
-          <Text style={styles.codeLabel}>Room code</Text>
+          <Text style={styles.codeLabel}>{tr('roomCode')}</Text>
           <Text style={styles.codeValue} accessibilityLabel={`party-code-${room.code}`}>{room.code}</Text>
-          <Text style={styles.codeHint}>Share the code or link with your team</Text>
-          <Text style={styles.codeHint}>Keep this screen open until everyone joins</Text>
+          <Text style={styles.codeHint}>{tr('shareCodeTeam')}</Text>
+          <Text style={styles.codeHint}>{tr('keepOpenTeam')}</Text>
         </View>
         <TouchScale style={styles.shareBtn} onPress={onShareInvite} accessibilityLabel="party-share-link">
-          <Text style={styles.shareBtnText}>{inviteNote || '🔗 Share invite link'}</Text>
+          <Text style={styles.shareBtnText}>{inviteNote || tr('shareInviteLink')}</Text>
         </TouchScale>
-        <Text style={styles.subtitle}>Players ({room.players.length}/{PARTY_MAX})</Text>
+        <Text style={styles.subtitle}>{tr('playersLabel')} ({room.players.length}/{PARTY_MAX})</Text>
         <View style={styles.playerList}>
           {Array.from({ length: PARTY_MAX }, (_, i) => {
             const p = room.players.find((pl) => pl.slot === i);
@@ -465,9 +465,9 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
                   ]}
                 />
                 <Text style={[styles.playerName, !p && styles.playerEmpty]}>
-                  {p ? p.name : 'Open'}
-                  {isYou ? ' (you)' : ''}
-                  {p && p.slot === 0 ? ' · host' : ''}
+                  {p ? p.name : tr('openSlot')}
+                  {isYou ? ` ${tr('youSuffix')}` : ''}
+                  {p && p.slot === 0 ? ` ${tr('hostSuffix')}` : ''}
                 </Text>
               </View>
             );
@@ -475,7 +475,7 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
         </View>
         {isHost ? (
           <View style={styles.stakeBox}>
-            <Text style={styles.codeLabel}>On the line — winner's reward</Text>
+            <Text style={styles.codeLabel}>{tr('onTheLineLabel')}</Text>
             <TextInput
               style={styles.stakeInput}
               value={stakeText}
@@ -483,23 +483,23 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
                 setStakeText(t);
                 room.setStake(t);
               }}
-              placeholder="e.g. doesn't work today"
+              placeholder={tr('stakePlaceholder')}
               placeholderTextColor={C.textDim}
               maxLength={80}
               accessibilityLabel="party-stake"
             />
             <View style={styles.stakeChips}>
-              {STAKE_TEMPLATES.map((t) => (
+              {(['stake1', 'stake2', 'stake3', 'stake4'] as const).map((k) => (
                 <TouchScale
-                  key={t}
+                  key={k}
                   style={styles.stakeChip}
                   onPress={() => {
-                    setStakeText(t);
-                    room.setStake(t);
+                    setStakeText(tr(k));
+                    room.setStake(tr(k));
                   }}
-                  accessibilityLabel={`stake-${t}`}
+                  accessibilityLabel={`stake-${tr(k)}`}
                 >
-                  <Text style={styles.stakeChipText}>{t}</Text>
+                  <Text style={styles.stakeChipText}>{tr(k)}</Text>
                 </TouchScale>
               ))}
             </View>
@@ -514,13 +514,13 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
             onPress={() => enough && room.startMatch()}
             accessibilityLabel="party-start-match"
           >
-            <Text style={styles.bigBtnText}>{enough ? 'Start match' : `Need ${PARTY_MIN}+ players`}</Text>
+            <Text style={styles.bigBtnText}>{enough ? tr('startMatch') : tr('needPlayers').split('{n}').join(String(PARTY_MIN))}</Text>
           </TouchScale>
         ) : (
-          <Text style={styles.status}>Waiting for host to start…</Text>
+          <Text style={styles.status}>{tr('waitingHost')}</Text>
         )}
         <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="party-leave">
-          <Text style={styles.backText}>Leave</Text>
+          <Text style={styles.backText}>{tr('leave')}</Text>
         </TouchScale>
       </View>
     );
@@ -610,21 +610,21 @@ function MatchView({
     <View style={[styles.container, pad]}>
       <View style={styles.hud}>
         <View style={[styles.chip, { borderColor: spectator ? C.border : PARTY_COLORS[mySlot % PARTY_COLORS.length].head }]}>
-          <Text style={styles.chipLabel}>YOU</Text>
-          <Text style={styles.chipVal}>{spectator ? '👁' : youAlive ? 'alive' : `#${youPlace}`}</Text>
+          <Text style={styles.chipLabel}>{tr('youChip')}</Text>
+          <Text style={styles.chipVal}>{spectator ? '👁' : youAlive ? tr('aliveWord') : `#${youPlace}`}</Text>
         </View>
         <View style={styles.chip}>
-          <Text style={styles.chipLabel}>ALIVE</Text>
+          <Text style={styles.chipLabel}>{tr('aliveChip')}</Text>
           <Text style={styles.chipVal}>{aliveCount}/{total}</Text>
         </View>
         <View style={styles.chip}>
-          <Text style={styles.chipLabel}>ROUND {state.round}</Text>
-          <Text style={styles.chipVal}>win {myWins}/{PARTY_WINS_NEEDED}</Text>
+          <Text style={styles.chipLabel}>{tr('round').toUpperCase()} {state.round}</Text>
+          <Text style={styles.chipVal}>{tr('winShort')} {myWins}/{PARTY_WINS_NEEDED}</Text>
         </View>
       </View>
 
       {!!stake && state.status === 'playing' && (
-        <Text style={styles.stakeBar} numberOfLines={1}>🏆 On the line: {stake}</Text>
+        <Text style={styles.stakeBar} numberOfLines={1}>🏆 {tr('onTheLine')}: {stake}</Text>
       )}
 
       <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx} names={names}>
@@ -633,16 +633,16 @@ function MatchView({
               <FadePop style={styles.overlayInner}>
                 <Text style={styles.overlayTitle}>
                   {state.roundWinner < 0
-                    ? 'Round draw'
+                    ? tr('roundDraw')
                     : state.roundWinner === mySlot
-                      ? 'You won the round! 🟢'
-                      : `${nameOf(state.roundWinner)} won the round`}
+                      ? tr('youWonRound')
+                      : `${nameOf(state.roundWinner)} ${tr('wonTheRound')}`}
                 </Text>
                 <Text style={styles.overlaySub}>
-                  First to {PARTY_WINS_NEEDED}
+                  {tr('firstTo')} {PARTY_WINS_NEEDED}
                   {state.roundWinner >= 0 ? ` · ${nameOf(state.roundWinner)}: ${state.roundWins[state.roundWinner]}` : ''}
                 </Text>
-                <Text style={styles.overlaySub}>Next round…</Text>
+                <Text style={styles.overlaySub}>{tr('nextRound')}</Text>
               </FadePop>
             </View>
           )}
@@ -651,11 +651,11 @@ function MatchView({
               {won && <Confetti />}
               <FadePop style={styles.overlayInner}>
                 <Text style={styles.overlayTitle}>
-                  {won ? "You don't work today! 🎉" : state.matchWinner < 0 ? 'Draw' : `${nameOf(state.matchWinner)} wins`}
+                  {won ? tr('dontWorkToday') : state.matchWinner < 0 ? tr('itsADraw') : `${nameOf(state.matchWinner)} ${tr('winsWord')}`}
                 </Text>
                 {!!stake && <Text style={styles.stakePrize}>🏆 {stake}</Text>}
                 {!spectator && !won && state.matchWinner >= 0 && (
-                  <Text style={styles.overlaySub}>You placed #{youPlace} this round</Text>
+                  <Text style={styles.overlaySub}>{tr('youPlaced').split('{n}').join(String(youPlace))}</Text>
                 )}
                 {finishOrder.length > 0 && (
                   <View style={styles.finishList}>
@@ -665,23 +665,23 @@ function MatchView({
                           {idx === 0 ? '🏆 ' : `#${idx + 1} `}
                         </Text>
                         {nameOf(slot)}
-                        {slot === mySlot ? ' (you)' : ''}
+                        {slot === mySlot ? ` ${tr('youSuffix')}` : ''}
                       </Text>
                     ))}
                   </View>
                 )}
                 <TouchScale style={styles.shareBtn} onPress={onShare} accessibilityLabel="party-share">
-                  <Text style={styles.shareBtnText}>{shareNote || 'Share result'}</Text>
+                  <Text style={styles.shareBtnText}>{shareNote || tr('shareResultBtn')}</Text>
                 </TouchScale>
                 {onAgain ? (
                   <TouchScale style={styles.bigBtn} onPress={onAgain} accessibilityLabel="party-again">
-                    <Text style={styles.bigBtnText}>Play again</Text>
+                    <Text style={styles.bigBtnText}>{tr('playAgain')}</Text>
                   </TouchScale>
                 ) : waitHost ? (
-                  <Text style={styles.overlaySub}>Waiting for host…</Text>
+                  <Text style={styles.overlaySub}>{tr('waitingHost')}</Text>
                 ) : null}
                 <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
-                  <Text style={styles.backText}>Back</Text>
+                  <Text style={styles.backText}>{tr('back')}</Text>
                 </TouchScale>
               </FadePop>
             </View>
@@ -692,10 +692,10 @@ function MatchView({
         <>
           <Text style={styles.hint}>
             {spectator
-              ? 'Spectating — match in progress'
+              ? tr('spectating')
               : youAlive
-                ? 'Swipe or D-pad — eat to grow, outlast everyone'
-                : 'You are out — watch who wins'}
+                ? tr('swipeOrDpad')
+                : tr('youAreOut')}
           </Text>
           {!spectator && youAlive && (
             <Dpad onTurn={onTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
@@ -704,7 +704,7 @@ function MatchView({
       )}
 
       <TouchScale style={styles.leaveBtn} onPress={onExit} accessibilityLabel="party-leave">
-        <Text style={styles.backText}>Leave</Text>
+        <Text style={styles.backText}>{tr('leave')}</Text>
       </TouchScale>
     </View>
     </GestureDetector>
@@ -766,15 +766,15 @@ export default function PartyGame({ onExit, autoJoin }: { onExit: () => void; au
   return (
     <View style={[styles.container, pad]}>
       <Text style={styles.title}>Shake Work Off</Text>
-      <Text style={styles.subtitle}>Last snake standing — winner doesn't work today</Text>
+      <Text style={styles.subtitle}>{tr('partySub')}</Text>
       <TouchScale style={styles.bigBtn} onPress={() => setScreen('net')} accessibilityLabel="party-team">
-        <Text style={styles.bigBtnText}>Team room (5–10)</Text>
+        <Text style={styles.bigBtnText}>{tr('teamRoomBtn')}</Text>
       </TouchScale>
       <TouchScale style={styles.altBtn} onPress={() => setScreen('practice')} accessibilityLabel="party-practice">
-        <Text style={styles.altBtnText}>Practice vs bots</Text>
+        <Text style={styles.altBtnText}>{tr('practiceVsBots')}</Text>
       </TouchScale>
       <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-exit">
-        <Text style={styles.backText}>Back</Text>
+        <Text style={styles.backText}>{tr('back')}</Text>
       </TouchScale>
     </View>
   );
