@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,7 +19,8 @@ import { hLight, hMedium, hSuccess, hError, colorblindOn, getCtrlScheme, getCtrl
 import { fonts, shade } from '../theme/tokens';
 import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import { Dpad } from '../ui/Dpad';
-import { t } from '../lib/i18n';
+import { t, tierName } from '../lib/i18n';
+import { useBoardPx } from '../lib/layout';
 
 const C = {
   bg: '#0B0F17',
@@ -71,10 +71,11 @@ export default function DuelGame({
   myId?: string;
   onRatingResult?: (r: RatingChange) => void;
 }) {
-  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // Safe-area через insets (хардкода paddingTop больше нет — на iPhone с чёлкой
+  // контент уходил под статусбар). Размер поля — единый хук layout.ts.
   const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
-  const boardPx = Math.max(240, Math.floor(Math.min(width - 24, height - insets.top - insets.bottom - (getCtrlScheme() === 'swipe' ? 150 : 356), 420)));
+  const boardPx = useBoardPx({ min: 240, max: 420, chrome: 190, sidePad: 24 });
   const cell = boardPx / DUEL_BOARD;
 
   const { conn, role, code, duel, oppRating, oppId, vsBot, oppLeft, netError, joinFailed, createRoom, joinRoom, rejoin, playBot, quickMatch, rankedMatch, startGame, turn, leave } = useRoom();
@@ -223,7 +224,7 @@ export default function DuelGame({
     const url = inviteUrl(code, myId);
     if (!url) return;
     track(EVENTS.challengeCreated, { via: 'share' });
-    shareResult('Beat me 1v1 in Shake Work Off ⚡', url).then(() => {
+    shareResult(t('shareChallenge'), url).then(() => {
       if (typeof navigator !== 'undefined' && !(navigator as { share?: unknown }).share) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
@@ -314,7 +315,7 @@ export default function DuelGame({
         {ranked && (conn === 'idle' || conn === 'searching' || conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
           <View style={styles.lobby}>
             <View style={styles.rankBox}>
-              <Text style={[styles.rankTier, { color: tier.color }]}>{tier.name}</Text>
+              <Text style={[styles.rankTier, { color: tier.color }]}>{tierName(tier.name)}</Text>
               <Text style={styles.rankRating}>{myRating}</Text>
             </View>
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
@@ -341,7 +342,7 @@ export default function DuelGame({
                 style={styles.input}
                 value={joinCode}
                 onChangeText={(t) => setJoinCode(t.toUpperCase())}
-                placeholder="CODE"
+                placeholder={t('codePlaceholderShort')}
                 placeholderTextColor={C.textDim}
                 autoCapitalize="characters"
                 maxLength={4}
@@ -419,7 +420,7 @@ export default function DuelGame({
 
   return (
     <GestureDetector gesture={swipe}>
-    <View style={[styles.container, pad]}>
+    <View style={[styles.matchContainer, pad]}>
       <View style={styles.hud}>
         <ScoreChip
           label={t('you')}
@@ -441,7 +442,7 @@ export default function DuelGame({
         />
       </View>
       <Text style={[styles.youHint, { color: mine.head }]}>
-        {t('youAreEat').split('{c}').join(t(you === 0 ? 'colorRed' : 'colorBlue'))}
+        {t('youAreEat', { c: t(you === 0 ? 'colorRed' : 'colorBlue') })}
       </Text>
 
       {(() => {
@@ -455,6 +456,7 @@ export default function DuelGame({
         );
       })()}
 
+      <View style={styles.playArea}>
       <View style={[styles.board, { width: boardPx, height: boardPx }]}>
           {duel.snakes.map((snake, si) =>
             snake.map((p, i) => {
@@ -571,8 +573,8 @@ export default function DuelGame({
                   onPress={() => {
                     const won = duel.matchWinner === you;
                     const msg = won
-                      ? `I won ${duel.matchWins[you]}:${duel.matchWins[opp]} in Shake Work Off ⚡ — challenge me!`
-                      : `I just battled in Shake Work Off ⚡ — can you do better?`;
+                      ? t('shareDuelWin', { a: duel.matchWins[you], b: duel.matchWins[opp] })
+                      : t('shareDuelLoss');
                     shareResult(msg).then((o) => {
                       track(EVENTS.share, { where: 'duel', result: won ? 'win' : 'other', outcome: o });
                       if (o === 'copied') {
@@ -589,6 +591,7 @@ export default function DuelGame({
             </View>
           )}
         </View>
+      </View>
 
       <Dpad onTurn={doTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
 
@@ -639,10 +642,13 @@ function ScoreChip({
 }
 
 const styles = StyleSheet.create({
+  // paddingTop/Bottom приходят снаружи через pad (safe-area insets), не хардкодим.
   container: {
-    flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center',
-    paddingTop: Platform.OS === 'web' ? 16 : 40, paddingBottom: 16, gap: 12,
+    flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 12,
   },
+  // Матч: шапка сверху, поле центрируется в свободном пространстве, D-pad снизу.
+  matchContainer: { flex: 1, backgroundColor: C.bg, alignItems: 'center', gap: 12 },
+  playArea: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
   title: { fontFamily: fonts.display, color: C.text, fontSize: 26, letterSpacing: 1 },
   lobby: { alignItems: 'center', gap: 12, width: '100%', maxWidth: 360 },
   rankBox: { alignItems: 'center', gap: 2, backgroundColor: C.board, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 40, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },

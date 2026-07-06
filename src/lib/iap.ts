@@ -3,6 +3,7 @@
 // UI просто не показывает секцию. Продукты создаются в App Store Connect на
 // МОНЕТИЗИРУЕМОМ аккаунте (КЗ); на билде без продуктов fetchCoinPacks вернёт [].
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Consumable-пакеты монет. SKU должны 1:1 совпадать с продуктами в ASC/Play Console.
 export const COIN_PACKS: { sku: string; coins: number }[] = [
@@ -30,39 +31,95 @@ if (Platform.OS !== 'web') {
 export const hasIap = (): boolean => iap !== null;
 
 let connected = false;
-const finished = new Set<string>(); // защита от повторного гранта за один и тот же transaction
+
+// Защита от повторного гранта монет: обработанные transactionId ПЕРСИСТЯТСЯ в
+// AsyncStorage (только память ломалась перезапуском: стор ре-доставляет покупку,
+// finished пуст → повторный грант — прямой эксплойт consumable-монет).
+const FIN_KEY = 'snake:iapFinished';
+const FIN_LIMIT = 50; // храним последние N, старые не нужны (стор их уже не ре-доставит)
+let finished = new Set<string>();
+
+async function loadFinished(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(FIN_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) finished = new Set(arr.filter((x) => typeof x === 'string'));
+    }
+  } catch {}
+}
+
+function persistFinished(): void {
+  const arr = [...finished].slice(-FIN_LIMIT);
+  finished = new Set(arr);
+  AsyncStorage.setItem(FIN_KEY, JSON.stringify(arr)).catch(() => {});
+}
+
+type Purchase = { productId: string; id?: string; transactionDate?: number };
 
 // Подключение к стору + слушатели результата покупки. Возвращает cleanup.
 // onCoins вызывается ПОСЛЕ успешной покупки — грант монет и запись в кошелёк на стороне App.
-export function initIap(onCoins: (coins: number, sku: string) => void): () => void {
+// onError — отказ/сбой покупки (кроме отмены пользователем): UI показывает сообщение.
+export function initIap(
+  onCoins: (coins: number, sku: string) => void,
+  onError?: (code?: string) => void,
+): () => void {
   if (!iap) return () => {};
   const mod = iap;
+  let disposed = false;
+  let upd: { remove(): void } | null = null;
+  let err: { remove(): void } | null = null;
 
-  const upd = mod.purchaseUpdatedListener((purchase) => {
+  const grant = (purchase: Purchase) => {
     const sku = purchase.productId;
     const pack = COIN_PACKS.find((p) => p.sku === sku);
-    if (!pack) return;
+    if (!pack) return false;
     const tid = purchase.id || `${sku}:${purchase.transactionDate}`;
-    if (finished.has(tid)) return;
+    if (finished.has(tid)) return false;
     finished.add(tid);
+    persistFinished();
     // Серверной верификации нет (монеты — клиентская валюта, как и весь кошелёк).
     onCoins(pack.coins, sku);
-    mod.finishTransaction({ purchase, isConsumable: true }).catch(() => {});
-  });
-  const err = mod.purchaseErrorListener(() => {
-    // Отмена/ошибка покупки — ничего не делаем (UI не блокируется).
-  });
+    return true;
+  };
 
-  mod
-    .initConnection()
-    .then(() => {
-      connected = true;
-    })
-    .catch(() => {});
+  // Слушатели вешаем ПОСЛЕ загрузки персиста finished — иначе ре-доставленная стором
+  // покупка успела бы получить повторный грант до того, как мы узнали, что она обработана.
+  loadFinished().then(() => {
+    if (disposed) return;
+    upd = mod.purchaseUpdatedListener((purchase) => {
+      grant(purchase);
+      mod.finishTransaction({ purchase, isConsumable: true }).catch(() => {});
+    });
+    err = mod.purchaseErrorListener((e: { code?: string }) => {
+      // Отмена пользователем — не ошибка, UI не трогаем. Остальное — сообщаем.
+      const code = String(e?.code ?? '');
+      if (/cancel/i.test(code)) return;
+      onError?.(code);
+    });
+
+    mod
+      .initConnection()
+      .then(async () => {
+        connected = true;
+        // «Зависшие» покупки (приложение убили до finishTransaction): догрантить и завершить.
+        try {
+          const pending = await mod.getAvailablePurchases();
+          for (const purchase of pending as Purchase[]) {
+            grant(purchase);
+            await mod
+              .finishTransaction({ purchase: purchase as never, isConsumable: true })
+              .catch(() => {});
+          }
+        } catch {}
+      })
+      .catch(() => {});
+  });
 
   return () => {
-    upd.remove();
-    err.remove();
+    disposed = true;
+    upd?.remove();
+    err?.remove();
     if (connected) mod.endConnection().catch(() => {});
     connected = false;
   };
@@ -82,15 +139,17 @@ export async function fetchCoinPacks(): Promise<CoinPack[]> {
   }
 }
 
-// Запуск покупки. Результат придёт в purchaseUpdatedListener (initIap), не сюда.
-export async function buyCoinPack(sku: string): Promise<void> {
-  if (!iap) return;
+// Запуск покупки. Успех придёт в purchaseUpdatedListener (initIap); синхронный отказ
+// стора (нет соединения и т.п.) — false, чтобы UI показал сообщение об ошибке.
+export async function buyCoinPack(sku: string): Promise<boolean> {
+  if (!iap) return false;
   try {
     await iap.requestPurchase({
       request: { apple: { sku }, google: { skus: [sku] } },
       type: 'in-app',
     });
+    return true;
   } catch {
-    // Синхронный отказ стора (нет соединения и т.п.) — тихо, UI не ломаем.
+    return false;
   }
 }

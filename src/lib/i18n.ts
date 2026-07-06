@@ -260,10 +260,65 @@ const S = {
   stake2: { en: 'skips standup', ru: 'пропускает планёрку', es: 'se salta la daily', de: 'lässt das Standup aus', pt: 'pula a daily' },
   stake3: { en: 'no chores today', ru: 'без рутины сегодня', es: 'sin tareas hoy', de: 'heute keine Pflichten', pt: 'sem tarefas hoje' },
   stake4: { en: 'picks lunch', ru: 'выбирает обед', es: 'elige el almuerzo', de: 'wählt das Mittagessen', pt: 'escolhe o almoço' },
+
+  // Онбординг — визуальные плашки
+  obSpeed: { en: 'SPEED ×2', ru: 'СКОРОСТЬ ×2', es: 'VELOCIDAD ×2', de: 'TEMPO ×2', pt: 'VELOCIDADE ×2' },
+  obRanked: { en: 'RANKED', ru: 'РЕЙТИНГ', es: 'CLASIFICATORIA', de: 'RANGLISTE', pt: 'RANQUEADA' },
+
+  // Имена по умолчанию (party)
+  botName: { en: 'Bot {n}', ru: 'Бот {n}', es: 'Bot {n}', de: 'Bot {n}', pt: 'Bot {n}' },
+  playerName: { en: 'Player {n}', ru: 'Игрок {n}', es: 'Jugador {n}', de: 'Spieler {n}', pt: 'Jogador {n}' },
+  nobody: { en: 'Nobody', ru: 'Никто', es: 'Nadie', de: 'Niemand', pt: 'Ninguém' },
+
+  // Лидерборд
+  wlShort: { en: '{w}W {l}L', ru: '{w}В {l}П', es: '{w}V {l}D', de: '{w}S {l}N', pt: '{w}V {l}D' },
+
+  // Плейсхолдеры
+  emailPlaceholder: { en: 'you@email.com', ru: 'имя@почта.ru', es: 'tu@email.com', de: 'du@email.de', pt: 'voce@email.com' },
+  codePlaceholderShort: { en: 'CODE', ru: 'КОД', es: 'COD', de: 'CODE', pt: 'COD' },
+
+  // Share-тексты (русский игрок шерит в русский чат)
+  shareSolo: { en: 'I scored {s} in Shake Work Off 🐍 — can you beat it?', ru: 'Я набрал {s} в Shake Work Off 🐍 — сможешь больше?', es: 'Hice {s} en Shake Work Off 🐍 — ¿puedes superarlo?', de: 'Ich habe {s} in Shake Work Off geholt 🐍 — schaffst du mehr?', pt: 'Fiz {s} no Shake Work Off 🐍 — consegue mais?' },
+  shareDuelWin: { en: 'I won {a}:{b} in Shake Work Off ⚡ — challenge me!', ru: 'Я выиграл {a}:{b} в Shake Work Off ⚡ — вызови меня!', es: 'Gané {a}:{b} en Shake Work Off ⚡ — ¡rétame!', de: 'Ich habe {a}:{b} in Shake Work Off gewonnen ⚡ — fordere mich heraus!', pt: 'Venci {a}:{b} no Shake Work Off ⚡ — me desafie!' },
+  shareDuelLoss: { en: 'I just battled in Shake Work Off ⚡ — can you do better?', ru: 'Я сразился в Shake Work Off ⚡ — сможешь лучше?', es: 'Acabo de luchar en Shake Work Off ⚡ — ¿lo haces mejor?', de: 'Ich habe gerade in Shake Work Off gekämpft ⚡ — kannst du es besser?', pt: 'Acabei de batalhar no Shake Work Off ⚡ — faz melhor?' },
+  shareChallenge: { en: 'Beat me 1v1 in Shake Work Off ⚡', ru: 'Обыграй меня 1 на 1 в Shake Work Off ⚡', es: 'Gáname 1v1 en Shake Work Off ⚡', de: 'Schlag mich 1v1 in Shake Work Off ⚡', pt: 'Me vença 1v1 no Shake Work Off ⚡' },
+  sharePartyInvite: { en: 'Join my team in Shake Work Off — winner skips work today! 🐍', ru: 'Заходи в мою команду в Shake Work Off — победитель сегодня не работает! 🐍', es: 'Únete a mi equipo en Shake Work Off — ¡el ganador no trabaja hoy! 🐍', de: 'Komm in mein Team bei Shake Work Off — der Sieger arbeitet heute nicht! 🐍', pt: 'Entre no meu time no Shake Work Off — quem vencer não trabalha hoje! 🐍' },
+  sharePartyWinStake: { en: 'I won Shake Work Off — {stake}! 🎉', ru: 'Я выиграл Shake Work Off — {stake}! 🎉', es: 'Gané Shake Work Off — ¡{stake}! 🎉', de: 'Ich habe Shake Work Off gewonnen — {stake}! 🎉', pt: 'Venci o Shake Work Off — {stake}! 🎉' },
+  sharePartyWin: { en: "I won Shake Work Off — I don't work today! 🎉", ru: 'Я выиграл Shake Work Off — сегодня не работаю! 🎉', es: 'Gané Shake Work Off — ¡hoy no trabajo! 🎉', de: 'Ich habe Shake Work Off gewonnen — heute arbeite ich nicht! 🎉', pt: 'Venci o Shake Work Off — hoje não trabalho! 🎉' },
+  sharePartyLossStake: { en: '{winner} won Shake Work Off — {stake} 🐍', ru: '{winner} выиграл Shake Work Off — {stake} 🐍', es: '{winner} ganó Shake Work Off — {stake} 🐍', de: '{winner} hat Shake Work Off gewonnen — {stake} 🐍', pt: '{winner} venceu o Shake Work Off — {stake} 🐍' },
+  sharePartyLoss: { en: '{winner} won our Shake Work Off match 🐍', ru: '{winner} выиграл наш матч в Shake Work Off 🐍', es: '{winner} ganó nuestra partida de Shake Work Off 🐍', de: '{winner} hat unser Shake-Work-Off-Match gewonnen 🐍', pt: '{winner} venceu nossa partida de Shake Work Off 🐍' },
+
+  // Покупки
+  purchaseError: { en: 'Could not complete the purchase.', ru: 'Не удалось совершить покупку.', es: 'No se pudo completar la compra.', de: 'Der Kauf konnte nicht abgeschlossen werden.', pt: 'Não foi possível concluir a compra.' },
+
+  // Тиры (локализуются ТОЛЬКО на рендере; хранимые значения остаются английскими)
+  tierBronze: { en: 'Bronze', ru: 'Бронза', es: 'Bronce', de: 'Bronze', pt: 'Bronze' },
+  tierSilver: { en: 'Silver', ru: 'Серебро', es: 'Plata', de: 'Silber', pt: 'Prata' },
+  tierGold: { en: 'Gold', ru: 'Золото', es: 'Oro', de: 'Gold', pt: 'Ouro' },
+  tierPlatinum: { en: 'Platinum', ru: 'Платина', es: 'Platino', de: 'Platin', pt: 'Platina' },
+  tierDiamond: { en: 'Diamond', ru: 'Алмаз', es: 'Diamante', de: 'Diamant', pt: 'Diamante' },
 } satisfies Record<string, Entry>;
 
 export type StringKey = keyof typeof S;
 
-export function t(key: StringKey): string {
-  return S[key][lang] ?? S[key].en;
+// Перевод с интерполяцией: t('needPlayers', { n: 5 }) заменит {n} на 5.
+export function t(key: StringKey, vars?: Record<string, string | number>): string {
+  let s = S[key][lang] ?? S[key].en;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
+  }
+  return s;
+}
+
+// Локализованное имя тира для UI. Хранимые/аналитические значения ('Bronze'…) не трогаем.
+const TIER_KEYS: Record<string, StringKey> = {
+  Bronze: 'tierBronze',
+  Silver: 'tierSilver',
+  Gold: 'tierGold',
+  Platinum: 'tierPlatinum',
+  Diamond: 'tierDiamond',
+};
+export function tierName(name: string): string {
+  const k = TIER_KEYS[name];
+  return k ? t(k) : name;
 }

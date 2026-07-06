@@ -48,6 +48,7 @@ export const EVENTS = {
   partyStart: 'party_start',
   partyEnd: 'party_end',
   iapPurchase: 'iap_purchase',
+  iapError: 'iap_error',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS] | string;

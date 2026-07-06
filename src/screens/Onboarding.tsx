@@ -71,7 +71,7 @@ const SLIDES: Slide[] = [
         <View style={[styles.foodDot, styles.boostDot]}>
           <View style={styles.boostCore} />
         </View>
-        <Text style={[styles.vizMark, { color: C.coinHi }]}>SPEED ×2</Text>
+        <Text style={[styles.vizMark, { color: C.coinHi }]}>{t('obSpeed')}</Text>
       </View>
     ),
   },
@@ -82,7 +82,7 @@ const SLIDES: Slide[] = [
     visual: () => (
       <View style={styles.vizRow}>
         <LinearGradient colors={gradients.ranked} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.badge}>
-          <Text style={styles.badgeText}>RANKED</Text>
+          <Text style={styles.badgeText}>{t('obRanked')}</Text>
         </LinearGradient>
         <LinearGradient colors={gradients.coin} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.coinBadge} />
       </View>

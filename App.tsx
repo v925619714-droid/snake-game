@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import {
   Gesture,
@@ -65,9 +64,11 @@ import { shareResult } from './src/lib/share';
 import { initSettings, hLight, hError, hSuccess, getCtrlScheme, getCtrlSide } from './src/lib/settings';
 import { Dpad } from './src/ui/Dpad';
 import { type CoinPack, buyCoinPack, fetchCoinPacks, initIap } from './src/lib/iap';
-import { initI18n, t } from './src/lib/i18n';
+import { initI18n, t, tierName } from './src/lib/i18n';
+import { useBoardPx } from './src/lib/layout';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+import { Manrope_600SemiBold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
 import { Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import { palette as COLORS, gradients, tierStyle, elevation, fonts, shade } from './src/theme/tokens';
 import { TouchScale, FadePop } from './src/ui/anim';
@@ -84,21 +85,17 @@ function speedFor(score: number): number {
 }
 
 function AppInner() {
-  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  // Поле соло-экрана: подгоняется под устройство (учёт safe area), чтобы D-pad влезал.
-  // Резерв под ромб-крестовик 212px выше, чем был у T-раскладки; в swipe-схеме пад скрыт
-  // и поле забирает высвобожденную высоту.
-  const dpadReserve = getCtrlScheme() === 'swipe' ? 130 : 336;
-  const boardPx = Math.max(
-    176,
-    Math.floor(Math.min(width - 32, height - insets.top - insets.bottom - dpadReserve, 360)),
-  );
+  // Поле соло-экрана: единый расчёт (src/lib/layout.ts) — реальная высота управления
+  // вместо прежних рассогласованных констант. chrome = шапка + хинт + отступы.
+  const boardPx = useBoardPx({ min: 176, max: 360, chrome: 128, sidePad: 32 });
   const cell = boardPx / BOARD;
 
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_500Medium,
     SpaceGrotesk_700Bold,
+    Manrope_600SemiBold,
+    Manrope_800ExtraBold,
     Inter_500Medium,
     Inter_600SemiBold,
   });
@@ -178,6 +175,8 @@ function AppInner() {
   const authUserRef = useRef(authUser);
   authUserRef.current = authUser;
   const [coinPacks, setCoinPacks] = useState<CoinPack[]>([]);
+  const [iapNote, setIapNote] = useState(''); // сообщение об ошибке покупки (магазин)
+  const iapNoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, setLangTick] = useState(0); // ререндер после initI18n/смены языка
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -246,6 +245,14 @@ function AppInner() {
     });
   }, [saveWallet]);
 
+  // Ошибка покупки → сообщение в магазине (автоскрытие). Отмена пользователем сюда не попадает.
+  const showIapError = useCallback((code?: string) => {
+    track(EVENTS.iapError, { code: code || 'unknown' });
+    setIapNote(t('purchaseError'));
+    if (iapNoteTimer.current) clearTimeout(iapNoteTimer.current);
+    iapNoteTimer.current = setTimeout(() => setIapNote(''), 4000);
+  }, []);
+
   // IAP: соединение со стором + грант монет после успешной покупки. На web/без продуктов —
   // no-op, coinPacks остаётся [] и секция в магазине не рендерится.
   useEffect(() => {
@@ -256,16 +263,17 @@ function AppInner() {
       const u = authUserRef.current;
       if (u) pushWallet(u.id, nw.coins, nw.owned, nw.selected, bestRef.current);
       track(EVENTS.iapPurchase, { sku, coins });
-    });
+    }, showIapError);
     // Цены подтягиваем с задержкой — initConnection асинхронный.
     const t = setTimeout(() => {
       fetchCoinPacks().then(setCoinPacks).catch(() => {});
     }, 2500);
     return () => {
       clearTimeout(t);
+      if (iapNoteTimer.current) clearTimeout(iapNoteTimer.current);
       cleanup();
     };
-  }, [saveWallet]);
+  }, [saveWallet, showIapError]);
 
   useEffect(() => {
     track(EVENTS.appOpen, { entry: initialRoom ? 'invite' : 'direct' });
@@ -763,7 +771,7 @@ function AppInner() {
             >
               <LinearGradient colors={gradients.ranked} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.rankedCta}>
                 <Text style={styles.rankedText}>
-                  {t('ranked')} · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tier.name}</Text> {profile?.rating ?? 1000}
+                  {t('ranked')} · <Text style={{ color: tierStyle[tier.name]?.color ?? COLORS.onBrand }}>{tierName(tier.name)}</Text> {profile?.rating ?? 1000}
                 </Text>
               </LinearGradient>
             </TouchScale>
@@ -812,9 +820,14 @@ function AppInner() {
             <ShopOverlay
               wallet={wallet}
               coinPacks={coinPacks}
+              note={iapNote}
               onBuy={handleBuy}
               onSelect={handleSelect}
-              onBuyPack={(sku) => void buyCoinPack(sku)}
+              onBuyPack={(sku) => {
+                buyCoinPack(sku).then((ok) => {
+                  if (!ok) showIapError('request_failed');
+                });
+              }}
               onClose={() => setShowShop(false)}
             />
           )}
@@ -854,6 +867,7 @@ function AppInner() {
             </View>
           </View>
 
+          <View style={styles.playArea}>
           <View style={[styles.board, { width: boardPx, height: boardPx }]}>
               {state.snake.map((p, i) => {
                 const isHead = i === 0;
@@ -928,7 +942,7 @@ function AppInner() {
                         style={styles.shareBtn}
                         onPress={() => {
                           const sc = state.score;
-                          shareResult(`I scored ${sc} in Shake Work Off 🐍 — can you beat it?`).then((o) => {
+                          shareResult(t('shareSolo', { s: sc })).then((o) => {
                             track(EVENTS.share, { where: 'solo', score: sc, outcome: o });
                             if (o === 'copied') {
                               setShareNote(t('linkCopied'));
@@ -967,9 +981,13 @@ function AppInner() {
               )}
           </View>
 
-          {state.status !== 'playing' && (
-            <Text style={styles.hint}>{t('swipeHint')}</Text>
-          )}
+          {/* Фиксированная высота под хинт — поле не прыгает при старте/паузе. */}
+          <View style={styles.hintSlot}>
+            {state.status !== 'playing' && (
+              <Text style={styles.hint}>{t('swipeHint')}</Text>
+            )}
+          </View>
+          </View>
 
           <Dpad onTurn={handleTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
         </View>
@@ -991,6 +1009,7 @@ export default function App() {
 function ShopOverlay({
   wallet,
   coinPacks,
+  note,
   onBuy,
   onSelect,
   onBuyPack,
@@ -998,6 +1017,7 @@ function ShopOverlay({
 }: {
   wallet: Wallet;
   coinPacks: CoinPack[];
+  note?: string;
   onBuy: (s: Skin) => void;
   onSelect: (id: string) => void;
   onBuyPack: (sku: string) => void;
@@ -1013,6 +1033,8 @@ function ShopOverlay({
             <Text style={styles.coinText}>{wallet.coins}</Text>
           </View>
         </View>
+
+        {!!note && <Text style={styles.shopNote}>{note}</Text>}
 
         <ScrollView style={styles.shopList} contentContainerStyle={{ gap: 10 }}>
           {coinPacks.length > 0 && (
@@ -1171,7 +1193,11 @@ const styles = StyleSheet.create({
   },
   // Меню (прокручиваемое) и соло-экран (фиксированный, под swipe).
   menuScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 16 },
-  soloContainer: { flex: 1, alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16 },
+  // Шапка фиксируется сверху, поле центрируется в свободном пространстве (playArea),
+  // D-pad прижат к нижнему inset — никаких дыр ни в dpad-, ни в swipe-режиме.
+  soloContainer: { flex: 1, alignItems: 'center', gap: 8, paddingHorizontal: 16 },
+  playArea: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
+  hintSlot: { height: 26, alignItems: 'center', justifyContent: 'center' },
   soloTop: { width: '100%', maxWidth: 420, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
   backChip: { backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 14, borderWidth: 1, borderColor: COLORS.borderGlass },
   backChipText: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
@@ -1189,7 +1215,7 @@ const styles = StyleSheet.create({
   menuGhostRow: { flexDirection: 'row', gap: 10 },
   ghostHalf: { flex: 1 },
   header: { alignItems: 'center', gap: 3 },
-  title: { fontFamily: fonts.display, fontSize: 25, letterSpacing: 1.5, textAlign: 'center' },
+  title: { fontFamily: fonts.brand, fontSize: 25, letterSpacing: 1.5, textAlign: 'center' },
   subtitle: { fontFamily: fonts.bodyBold, color: COLORS.textFaint, fontSize: 10, letterSpacing: 5 },
   acctChip: { marginTop: 4, backgroundColor: COLORS.surface, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderGlass, maxWidth: 260 },
   acctText: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 11 },
@@ -1280,11 +1306,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.66)',
+    // Плотный скрим: сквозь модалку не должны просвечивать логотип/фон меню.
+    backgroundColor: 'rgba(7,10,16,0.85)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
   },
+  shopNote: { fontFamily: fonts.bodyBold, color: COLORS.danger, fontSize: 13, textAlign: 'center' },
   shopCard: {
     width: '100%',
     maxWidth: 420,
@@ -1330,8 +1358,9 @@ const styles = StyleSheet.create({
   skinBtnText: { fontFamily: fonts.bodyBold, color: COLORS.onAccent, fontSize: 14 },
   skinBtnActive: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.brand2 },
   skinBtnActiveText: { fontFamily: fonts.bodyBold, color: COLORS.brand2, fontSize: 14 },
-  skinBtnDisabled: { backgroundColor: COLORS.surfaceHi },
-  skinBtnDisabledText: { color: COLORS.textFaint },
+  // Disabled = та же кнопка, но явно «погашенная» (а не textFaint на surface с контрастом ~2:1).
+  skinBtnDisabled: { backgroundColor: COLORS.surfaceHi, opacity: 0.45 },
+  skinBtnDisabledText: { color: COLORS.textDim },
   packHeader: { fontFamily: fonts.bodyBold, color: COLORS.textDim, fontSize: 12, letterSpacing: 1.5, marginTop: 4 },
   packIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.surfaceHi, alignItems: 'center', justifyContent: 'center' },
   packBtn: { backgroundColor: COLORS.coin },

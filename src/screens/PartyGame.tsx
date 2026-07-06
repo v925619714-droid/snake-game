@@ -8,7 +8,6 @@ import {
   Text,
   TextInput,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +29,7 @@ import { TouchScale, FadePop, Confetti } from '../ui/anim';
 import { hLight, hSuccess, hError, getCtrlScheme, getCtrlSide } from '../lib/settings';
 import { Dpad } from '../ui/Dpad';
 import { t as tr } from '../lib/i18n';
+import { useBoardPx as useSharedBoardPx } from '../lib/layout';
 import { play as playSfx } from '../lib/sound';
 import { shareResult, GAME_URL } from '../lib/share';
 import { EVENTS, track } from '../lib/analytics';
@@ -144,7 +144,7 @@ function PartyBoard({
                     ]}
                     numberOfLines={1}
                   >
-                    {mine ? 'YOU' : shortName(names[si])}
+                    {mine ? tr('youChip') : shortName(names[si])}
                   </Text>
                 )}
               </View>
@@ -190,11 +190,8 @@ function placeOf(state: PartyState, slot: number): number {
 }
 
 function useBoardPx() {
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  // Резерв под ромб-крестовик (212px) выше, чем был у T-раскладки; swipe освобождает высоту.
-  const reserve = getCtrlScheme() === 'swipe' ? 140 : 330;
-  return Math.max(260, Math.floor(Math.min(width - 20, height - insets.top - insets.bottom - reserve, 480)));
+  // Единый расчёт (src/lib/layout.ts): реальная высота управления + хром экрана матча.
+  return useSharedBoardPx({ min: 260, max: 480, chrome: 170, sidePad: 20 });
 }
 
 // ── ЛОКАЛЬНАЯ ПРАКТИКА (vs боты) ──
@@ -287,7 +284,7 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
   }
 
   const aliveCount = state.alive.filter(Boolean).length;
-  const names = state.snakes.map((_, i) => (i === 0 ? 'You' : `Bot ${i + 1}`));
+  const names = state.snakes.map((_, i) => (i === 0 ? tr('you') : tr('botName', { n: i + 1 })));
   return (
     <MatchView
       state={state}
@@ -332,10 +329,10 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
   const onShareInvite = useCallback(() => {
     const url = teamInviteUrl(room.code);
     if (!url) return;
-    shareResult("Join my team in Shake Work Off — winner skips work today! 🐍", url).then((o) => {
+    shareResult(tr('sharePartyInvite'), url).then((o) => {
       track(EVENTS.share, { where: 'party_invite', mode: 'net' });
       if (o === 'copied') {
-        setInviteNote('Link copied!');
+        setInviteNote(tr('linkCopied'));
         setTimeout(() => setInviteNote(''), 1500);
       }
     });
@@ -390,7 +387,7 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
         <Text style={styles.subtitle}>{tr('teamRoomSub')}</Text>
         {!!autoJoin && (
           <Text style={[styles.subtle, { color: C.accent }]}>
-            {tr('invitedToTeam').split('{c}').join(joinCode || autoJoin)}
+            {tr('invitedToTeam', { c: joinCode || autoJoin })}
           </Text>
         )}
         {room.conn === 'error' && <Text style={styles.errText}>{tr('connErrRetry')}</Text>}
@@ -411,7 +408,7 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
             style={styles.codeInput}
             value={joinCode}
             onChangeText={(t) => setJoinCode(t.toUpperCase())}
-            placeholder="CODE"
+            placeholder={tr('codePlaceholderShort')}
             placeholderTextColor={C.textDim}
             autoCapitalize="characters"
             maxLength={5}
@@ -514,7 +511,7 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
             onPress={() => enough && room.startMatch()}
             accessibilityLabel="party-start-match"
           >
-            <Text style={styles.bigBtnText}>{enough ? tr('startMatch') : tr('needPlayers').split('{n}').join(String(PARTY_MIN))}</Text>
+            <Text style={styles.bigBtnText}>{enough ? tr('startMatch') : tr('needPlayers', { n: PARTY_MIN })}</Text>
           </TouchScale>
         ) : (
           <Text style={styles.status}>{tr('waitingHost')}</Text>
@@ -584,22 +581,22 @@ function MatchView({
   const won = mySlot >= 0 && state.matchWinner === mySlot;
   const finishOrder = [...state.placements].reverse(); // выживший раунда — первым
   const [shareNote, setShareNote] = useState('');
-  const nameOf = (slot: number) => names[slot] || `Player ${slot + 1}`;
+  const nameOf = (slot: number) => names[slot] || tr('playerName', { n: slot + 1 });
   const myWins = mySlot >= 0 ? state.roundWins[mySlot] ?? 0 : 0;
 
   const onShare = () => {
-    const winnerName = state.matchWinner >= 0 ? nameOf(state.matchWinner) : 'Nobody';
+    const winnerName = state.matchWinner >= 0 ? nameOf(state.matchWinner) : tr('nobody');
     const msg = won
       ? stake
-        ? `I won Shake Work Off — ${stake}! 🎉`
-        : `I won Shake Work Off — I don't work today! 🎉`
+        ? tr('sharePartyWinStake', { stake })
+        : tr('sharePartyWin')
       : stake
-        ? `${winnerName} won Shake Work Off — ${stake} 🐍`
-        : `${winnerName} won our Shake Work Off match 🐍`;
+        ? tr('sharePartyLossStake', { winner: winnerName, stake })
+        : tr('sharePartyLoss', { winner: winnerName });
     shareResult(msg).then((o) => {
       track(EVENTS.share, { where: 'party', mode, won });
       if (o === 'copied') {
-        setShareNote('Link copied!');
+        setShareNote(tr('linkCopied'));
         setTimeout(() => setShareNote(''), 1500);
       }
     });
@@ -607,7 +604,7 @@ function MatchView({
 
   return (
     <GestureDetector gesture={swipe}>
-    <View style={[styles.container, pad]}>
+    <View style={[styles.matchContainer, pad]}>
       <View style={styles.hud}>
         <View style={[styles.chip, { borderColor: spectator ? C.border : PARTY_COLORS[mySlot % PARTY_COLORS.length].head }]}>
           <Text style={styles.chipLabel}>{tr('youChip')}</Text>
@@ -627,6 +624,7 @@ function MatchView({
         <Text style={styles.stakeBar} numberOfLines={1}>🏆 {tr('onTheLine')}: {stake}</Text>
       )}
 
+      <View style={styles.playArea}>
       <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx} names={names}>
           {state.status === 'roundOver' && (
             <View style={styles.overlay}>
@@ -655,7 +653,7 @@ function MatchView({
                 </Text>
                 {!!stake && <Text style={styles.stakePrize}>🏆 {stake}</Text>}
                 {!spectator && !won && state.matchWinner >= 0 && (
-                  <Text style={styles.overlaySub}>{tr('youPlaced').split('{n}').join(String(youPlace))}</Text>
+                  <Text style={styles.overlaySub}>{tr('youPlaced', { n: youPlace })}</Text>
                 )}
                 {finishOrder.length > 0 && (
                   <View style={styles.finishList}>
@@ -687,6 +685,7 @@ function MatchView({
             </View>
           )}
         </PartyBoard>
+      </View>
 
       {state.status === 'playing' && (
         <>
@@ -765,7 +764,7 @@ export default function PartyGame({ onExit, autoJoin }: { onExit: () => void; au
 
   return (
     <View style={[styles.container, pad]}>
-      <Text style={styles.title}>Shake Work Off</Text>
+      <Text style={[styles.title, { fontFamily: fonts.brand }]}>Shake Work Off</Text>
       <Text style={styles.subtitle}>{tr('partySub')}</Text>
       <TouchScale style={styles.bigBtn} onPress={() => setScreen('net')} accessibilityLabel="party-team">
         <Text style={styles.bigBtnText}>{tr('teamRoomBtn')}</Text>
@@ -781,15 +780,17 @@ export default function PartyGame({ onExit, autoJoin }: { onExit: () => void; au
 }
 
 const styles = StyleSheet.create({
+  // paddingTop/Bottom приходят снаружи через pad (safe-area insets), не хардкодим.
   container: {
     flex: 1,
     backgroundColor: C.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: Platform.OS === 'web' ? 16 : 40,
-    paddingBottom: 16,
     gap: 12,
   },
+  // Матч: шапка сверху, поле центрируется в свободном пространстве, D-pad снизу.
+  matchContainer: { flex: 1, backgroundColor: C.bg, alignItems: 'center', gap: 12 },
+  playArea: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
   title: { fontFamily: fonts.display, color: C.text, fontSize: 28, letterSpacing: 1 },
   subtitle: { fontFamily: fonts.body, color: C.textDim, fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
   errText: { fontFamily: fonts.bodyBold, color: '#ff6b6b', fontSize: 13 },

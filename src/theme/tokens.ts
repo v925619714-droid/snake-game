@@ -58,10 +58,15 @@ export const tierStyle: Record<string, { color: string; grad: readonly [string, 
   Diamond: { color: '#B9F2FF', grad: ['#E8FBFF', '#8FE3F5'] },
 };
 
-// Шрифты (грузятся через useFonts в App). display/num — Space Grotesk, body — Inter.
+// Шрифты (грузятся через useFonts в App).
+// ⚠️ Space Grotesk НЕ содержит кириллицу → на переводимом тексте падал в системный serif.
+// display (переводимые заголовки/CTA) — Manrope (полная кириллица);
+// brand — Space Grotesk ТОЛЬКО для непереводимого: логотип «SHAKE WORK OFF»;
+// num — Space Grotesk для чисел и кодов комнат (цифры/латиница).
 export const fonts = {
-  display: 'SpaceGrotesk_700Bold',
-  displayMed: 'SpaceGrotesk_500Medium',
+  display: 'Manrope_800ExtraBold',
+  displayMed: 'Manrope_600SemiBold',
+  brand: 'SpaceGrotesk_700Bold',
   num: 'SpaceGrotesk_700Bold',
   body: 'Inter_500Medium',
   bodyBold: 'Inter_600SemiBold',

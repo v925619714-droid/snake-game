@@ -6,7 +6,7 @@ import { type LeaderRow, fetchLeaderboard } from '../lib/leaderboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { fonts, tierStyle } from '../theme/tokens';
 import { TouchScale } from '../ui/anim';
-import { t as tr } from '../lib/i18n';
+import { t as tr, tierName } from '../lib/i18n';
 
 const C = {
   bg: '#0B0F17',
@@ -59,13 +59,13 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name} numberOfLines={1}>
                     {r.name}
-                    {me ? ' (you)' : ''}
+                    {me ? ` ${tr('youSuffix')}` : ''}
                   </Text>
                   <View style={styles.tierRow}>
                     <LinearGradient colors={grad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.tierPill}>
-                      <Text style={styles.tierPillText}>{t.name}</Text>
+                      <Text style={styles.tierPillText}>{tierName(t.name)}</Text>
                     </LinearGradient>
-                    <Text style={styles.wl}>{r.wins}W {r.losses}L</Text>
+                    <Text style={styles.wl}>{tr('wlShort', { w: r.wins, l: r.losses })}</Text>
                   </View>
                 </View>
                 <Text style={styles.rating}>{r.rating}</Text>

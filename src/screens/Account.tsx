@@ -124,7 +124,7 @@ export default function Account({
             style={styles.input}
             value={email}
             onChangeText={setEmail}
-            placeholder="you@email.com"
+            placeholder={t('emailPlaceholder')}
             placeholderTextColor={C.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
