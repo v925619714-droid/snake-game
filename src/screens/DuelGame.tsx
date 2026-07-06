@@ -1,36 +1,27 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DUEL_BOARD } from '../game/duel';
 import { type Direction, swipeToDirection } from '../game/logic';
 import { type MatchResult, applyResult, tierFor } from '../game/rating';
 import { useRoom } from '../net/useRoom';
 import { EVENTS, track } from '../lib/analytics';
 import { play as playSfx } from '../lib/sound';
-import { shareResult, GAME_URL } from '../lib/share';
+import { shareResult } from '../lib/share';
 import { hLight, hMedium, hSuccess, hError, colorblindOn, getCtrlScheme, getCtrlSide } from '../lib/settings';
-import { fonts, shade } from '../theme/tokens';
-import { TouchScale, FadePop, Confetti } from '../ui/anim';
+import { palette, fonts, radius, shade, glow } from '../theme/tokens';
+import { TouchScale, Confetti } from '../ui/anim';
 import { Dpad } from '../ui/Dpad';
+import { GameButton } from '../ui/GameButton';
+import { GameInput } from '../ui/GameInput';
+import { GameOverlay } from '../ui/GameOverlay';
+import { CodeBox } from '../ui/CodeBox';
+import { HudChip } from '../ui/HudChip';
+import { ScreenShell, ScreenTitle } from '../ui/Screen';
+import { SnakeCell, FoodCell } from '../ui/BoardCells';
 import { t, tierName } from '../lib/i18n';
-import { useBoardPx } from '../lib/layout';
-
-const C = {
-  bg: '#0B0F17',
-  board: '#121826',
-  border: '#1D2940',
-  text: '#E8F0FB',
-  textDim: '#8395AE',
-  btn: '#121826',
-  accent: '#3DDC84',
-};
+import { useBoardPx, useIsDesktopWeb } from '../lib/layout';
+import { GAME_URL } from '../lib/share';
 
 const P = [
   { body: '#ff5c5c', head: '#ffb0a3', food: '#ff5c5c', name: 'Red' },
@@ -71,10 +62,7 @@ export default function DuelGame({
   myId?: string;
   onRatingResult?: (r: RatingChange) => void;
 }) {
-  const insets = useSafeAreaInsets();
-  // Safe-area через insets (хардкода paddingTop больше нет — на iPhone с чёлкой
-  // контент уходил под статусбар). Размер поля — единый хук layout.ts.
-  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
+  const isDesktop = useIsDesktopWeb();
   const boardPx = useBoardPx({ min: 240, max: 420, chrome: 190, sidePad: 24 });
   const cell = boardPx / DUEL_BOARD;
 
@@ -296,19 +284,15 @@ export default function DuelGame({
   // ── LOBBY ──
   if (!duel) {
     return (
-      <View style={[styles.container, pad]}>
-        <Text style={styles.title}>{ranked ? t('ranked') : t('colorDuel')}</Text>
+      <ScreenShell maxWidth={420}>
+        <ScreenTitle>{ranked ? t('ranked') : t('colorDuel')}</ScreenTitle>
 
         {joinFailed && (
           <View style={styles.lobby}>
             <Text style={styles.status}>{t('roomNotFound')}</Text>
             <Text style={[styles.subtle, { textAlign: 'center' }]}>{t('roomNotFoundHint')}</Text>
-            <TouchScale style={styles.bigBtn} onPress={() => { if (autoJoin) rejoin(autoJoin); }} accessibilityLabel="retry-join">
-              <Text style={styles.bigBtnText}>{t('tryAgain')}</Text>
-            </TouchScale>
-            <TouchScale style={styles.altBtn} onPress={() => playBot(myRating)} accessibilityLabel="play-bot">
-              <Text style={styles.altBtnText}>{t('playVsBot')}</Text>
-            </TouchScale>
+            <GameButton title={t('tryAgain')} onPress={() => { if (autoJoin) rejoin(autoJoin); }} a11y="retry-join" />
+            <GameButton title={t('playVsBot')} variant="secondary" onPress={() => playBot(myRating)} a11y="play-bot" />
           </View>
         )}
 
@@ -321,40 +305,28 @@ export default function DuelGame({
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
               {conn === 'ready' ? t('opponentFound') : t('findingOpponent')}
             </Text>
-            <TouchScale style={styles.altBtn} onPress={cancelSearch} accessibilityLabel="cancel-search">
-              <Text style={styles.altBtnText}>{t('cancel')}</Text>
-            </TouchScale>
+            <GameButton title={t('cancel')} variant="secondary" onPress={cancelSearch} a11y="cancel-search" />
           </View>
         )}
 
         {!ranked && conn === 'idle' && (
           <View style={styles.lobby}>
-            <TouchScale style={styles.bigBtn} onPress={onQuick} accessibilityLabel="quick-match">
-              <Text style={styles.bigBtnText}>{t('quickMatch')}</Text>
-            </TouchScale>
+            <GameButton title={t('quickMatch')} onPress={onQuick} a11y="quick-match" />
             <Text style={styles.subtle}>{t('randomOpponent')}</Text>
             <View style={styles.divider} />
-            <TouchScale style={styles.altBtn} onPress={onCreate} accessibilityLabel="create-room">
-              <Text style={styles.altBtnText}>{t('playWithFriend')}</Text>
-            </TouchScale>
+            <GameButton title={t('playWithFriend')} variant="secondary" onPress={onCreate} a11y="create-room" />
             <View style={styles.joinRow}>
-              <TextInput
-                style={styles.input}
+              <GameInput
                 value={joinCode}
-                onChangeText={(t) => setJoinCode(t.toUpperCase())}
+                onChangeText={(v) => setJoinCode(v.toUpperCase())}
                 placeholder={t('codePlaceholderShort')}
-                placeholderTextColor={C.textDim}
                 autoCapitalize="characters"
                 maxLength={4}
-                accessibilityLabel="join-code"
+                mono
+                a11y="join-code"
+                style={styles.codeInput}
               />
-              <TouchScale
-                style={styles.joinBtn}
-                onPress={onJoinCode}
-                accessibilityLabel="join-room"
-              >
-                <Text style={styles.altBtnText}>{t('join')}</Text>
-              </TouchScale>
+              <GameButton title={t('join')} variant="secondary" onPress={onJoinCode} a11y="join-room" />
             </View>
             <Rules />
           </View>
@@ -363,31 +335,31 @@ export default function DuelGame({
         {!ranked && conn === 'searching' && (
           <View style={styles.lobby}>
             <Text style={styles.status} accessibilityLabel="conn-searching">{t('searchingOpponent')}</Text>
-            <TouchScale style={styles.altBtn} onPress={cancelSearch} accessibilityLabel="cancel-search">
-              <Text style={styles.altBtnText}>{t('cancel')}</Text>
-            </TouchScale>
+            <GameButton title={t('cancel')} variant="secondary" onPress={cancelSearch} a11y="cancel-search" />
           </View>
         )}
 
         {!ranked && !joinFailed && (conn === 'connecting' || conn === 'waiting' || conn === 'ready') && (
           <View style={styles.lobby}>
             {role === 'host' && (
-              <View style={styles.codeBox}>
-                <Text style={styles.codeLabel}>{t('roomCode')}</Text>
-                <Text style={styles.codeValue} accessibilityLabel={`room-code-${code}`}>{code}</Text>
+              <CodeBox
+                label={t('roomCode')}
+                code={code}
+                a11y={`room-code-${code}`}
+                hints={[t('sendCodeHint'), t('keepOpenHint')]}
+              >
                 {!!inviteUrl(code, myId) && (
                   <>
-                    <TouchScale style={styles.copyBtn} onPress={challengeFriend} accessibilityLabel="challenge-friend">
-                      <Text style={styles.copyBtnText}>{copied ? t('linkCopied') : t('challengeFriendBtn')}</Text>
-                    </TouchScale>
-                    <TouchScale style={styles.linkBtn} onPress={copyInvite} accessibilityLabel="copy-invite">
-                      <Text style={styles.linkText}>{t('copyInviteLink')}</Text>
-                    </TouchScale>
+                    <GameButton
+                      title={copied ? t('linkCopied') : t('challengeFriendBtn')}
+                      onPress={challengeFriend}
+                      a11y="challenge-friend"
+                      style={styles.copyBtn}
+                    />
+                    <GameButton title={t('copyInviteLink')} variant="ghost" onPress={copyInvite} a11y="copy-invite" />
                   </>
                 )}
-                <Text style={styles.codeHint}>{t('sendCodeHint')}</Text>
-                <Text style={styles.codeHint}>{t('keepOpenHint')}</Text>
-              </View>
+              </CodeBox>
             )}
             <Text style={styles.status} accessibilityLabel={`conn-${conn}`}>
               {conn === 'connecting' && t('connecting')}
@@ -396,9 +368,7 @@ export default function DuelGame({
               {conn === 'ready' && role === 'guest' && t('waitingHost')}
             </Text>
             {conn === 'ready' && role === 'host' && (
-              <TouchScale style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-start">
-                <Text style={styles.bigBtnText}>{t('start')}</Text>
-              </TouchScale>
+              <GameButton title={t('start')} onPress={startGame} a11y="duel-start" />
             )}
             <Rules />
           </View>
@@ -406,10 +376,8 @@ export default function DuelGame({
 
         {conn === 'error' && <Text style={styles.status}>{t('connectionError')}</Text>}
 
-        <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
-          <Text style={styles.backText}>{t('back')}</Text>
-        </TouchScale>
-      </View>
+        <GameButton title={t('back')} variant="ghost" onPress={handleExit} a11y="duel-back" />
+      </ScreenShell>
     );
   }
 
@@ -420,26 +388,32 @@ export default function DuelGame({
 
   return (
     <GestureDetector gesture={swipe}>
-    <View style={[styles.matchContainer, pad]}>
+    <ScreenShell maxWidth={560} center={false}>
       <View style={styles.hud}>
-        <ScoreChip
+        <HudChip
           label={t('you')}
-          color={mine.head}
-          wins={duel.matchWins[you]}
-          round={duel.roundScore[you]}
-          rating={ranked ? myRating : undefined}
-        />
+          value={duel.matchWins[you]}
+          valueColor={mine.head}
+          borderColor={mine.head}
+          sub={ranked ? `${myRating} ${t('ptsSuffix')}` : `${duel.roundScore[you]} ${t('thisRound')}`}
+          a11y={`${t('you')}-wins-${duel.matchWins[you]}`}
+        >
+          <View style={[styles.chipDot, { backgroundColor: mine.head }, glow(mine.head, 5, 0.9)]} />
+        </HudChip>
         <View style={styles.roundBadge}>
           <Text style={styles.roundText}>{ranked ? t('ranked') : `${t('round')} ${duel.round}`}</Text>
           <Text style={styles.roundSub}>{t('dontCrash')}</Text>
         </View>
-        <ScoreChip
+        <HudChip
           label={t('oppLabel')}
-          color={P[opp].head}
-          wins={duel.matchWins[opp]}
-          round={duel.roundScore[opp]}
-          rating={ranked && typeof oppRating === 'number' ? oppRating : undefined}
-        />
+          value={duel.matchWins[opp]}
+          valueColor={P[opp].head}
+          borderColor={P[opp].head}
+          sub={ranked && typeof oppRating === 'number' ? `${oppRating} ${t('ptsSuffix')}` : `${duel.roundScore[opp]} ${t('thisRound')}`}
+          a11y={`${t('oppLabel')}-wins-${duel.matchWins[opp]}`}
+        >
+          <View style={[styles.chipDot, { backgroundColor: P[opp].head }, glow(P[opp].head, 5, 0.9)]} />
+        </HudChip>
       </View>
       <Text style={[styles.youHint, { color: mine.head }]}>
         {t('youAreEat', { c: t(you === 0 ? 'colorRed' : 'colorBlue') })}
@@ -459,146 +433,100 @@ export default function DuelGame({
       <View style={styles.playArea}>
       <View style={[styles.board, { width: boardPx, height: boardPx }]}>
           {duel.snakes.map((snake, si) =>
-            snake.map((p, i) => {
-              const isHead = i === 0;
-              return (
-                <View
-                  key={`${si}-${i}`}
-                  style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 0.5, transform: [{ translateX: p.x * cell }, { translateY: p.y * cell }] }}
-                >
-                  <View
-                    style={[
-                      {
-                        flex: 1,
-                        borderRadius: cell * (isHead ? 0.34 : 0.28),
-                        backgroundColor: isHead ? P[si].head : shade(P[si].body, (i / snake.length) * 0.5),
-                      },
-                      isHead && {
-                        shadowColor: P[si].head,
-                        shadowOpacity: 0.9,
-                        shadowRadius: 5,
-                        shadowOffset: { width: 0, height: 0 },
-                        elevation: 5,
-                      },
-                    ]}
-                  >
-                    {isHead && (
-                      <>
-                        <View style={[styles.eye, { top: cell * 0.26, left: cell * 0.22, width: cell * 0.18, height: cell * 0.18, borderRadius: cell * 0.09 }]} />
-                        <View style={[styles.eye, { top: cell * 0.26, right: cell * 0.22, width: cell * 0.18, height: cell * 0.18, borderRadius: cell * 0.09 }]} />
-                      </>
-                    )}
-                  </View>
-                </View>
-              );
-            }),
+            snake.map((p, i) => (
+              <SnakeCell
+                key={`${si}-${i}`}
+                x={p.x}
+                y={p.y}
+                cell={cell}
+                pad={0.5}
+                isHead={i === 0}
+                color={i === 0 ? P[si].head : shade(P[si].body, (i / snake.length) * 0.5)}
+                glowColor={P[si].head}
+                eyeSize={0.18}
+                eyeInset={0.22}
+              />
+            )),
           )}
           {duel.foods.map((f, i) => {
             if (f.fat) {
-              // Жирная еда (нейтральная): золотой кружок со свечением + белое ядро (+рост).
-              return (
-                <View
-                  key={`f-${i}`}
-                  style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 0.5, transform: [{ translateX: f.pos.x * cell }, { translateY: f.pos.y * cell }] }}
-                >
-                  <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: '#FFE680', shadowColor: '#FFD75E', shadowOpacity: 1, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 8, alignItems: 'center', justifyContent: 'center' }}>
-                    <View style={{ width: cell * 0.34, height: cell * 0.34, borderRadius: cell * 0.2, backgroundColor: '#fff' }} />
-                  </View>
-                </View>
-              );
+              return <FoodCell key={`f-${i}`} x={f.pos.x} y={f.pos.y} cell={cell} kind="fat" pad={0.5} />;
             }
             const blink = f.blink ?? 0;
             // Пока мигает — пульсирует прозрачностью (видно, что еда ещё инертна).
             const opacity = blink > 0 ? (Math.floor(blink / 2) % 2 === 0 ? 0.25 : 0.7) : 1;
             return (
-              <View
+              <FoodCell
                 key={`f-${i}`}
-                style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 1, opacity, transform: [{ translateX: f.pos.x * cell }, { translateY: f.pos.y * cell }] }}
-              >
-                <View style={{ flex: 1, borderRadius: f.color === you ? cell / 2 : (colorblindOn() ? cell * 0.12 : cell / 2), backgroundColor: P[f.color].food, shadowColor: P[f.color].food, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 }, elevation: 5 }} />
-              </View>
+                x={f.pos.x}
+                y={f.pos.y}
+                cell={cell}
+                color={P[f.color].food}
+                kind={f.color === you ? 'round' : colorblindOn() ? 'square' : 'round'}
+                opacity={opacity}
+              />
             );
           })}
 
           {duel.status === 'roundOver' && (
-            <View style={styles.overlay}>
-              <FadePop style={styles.overlayInner}>
-                <Text style={styles.overlayTitle}>
-                  {duel.roundWinner === -1 ? t('draw') : duel.roundWinner === you ? t('roundWon') : t('roundLost')}
-                </Text>
-                <Text style={styles.overlaySub}>{t('nextRound')}</Text>
-              </FadePop>
-            </View>
+            <GameOverlay
+              title={duel.roundWinner === -1 ? t('draw') : duel.roundWinner === you ? t('roundWon') : t('roundLost')}
+              sub={t('nextRound')}
+            />
           )}
 
           {netError && duel.status !== 'matchOver' && (
-            <View style={styles.overlay}>
-              <FadePop style={styles.overlayInner}>
-                <Text style={styles.overlayTitle}>{t('connectionLost')}</Text>
-                <Text style={styles.overlaySub}>{t('reconnecting')}</Text>
-                <TouchScale style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-neterror-leave">
-                  <Text style={styles.bigBtnText}>{t('leave')}</Text>
-                </TouchScale>
-              </FadePop>
-            </View>
+            <GameOverlay title={t('connectionLost')} sub={t('reconnecting')}>
+              <GameButton title={t('leave')} onPress={handleExit} a11y="duel-neterror-leave" />
+            </GameOverlay>
           )}
 
           {duel.status === 'matchOver' && (
-            <View style={styles.overlay}>
-              {duel.matchWinner === you && <Confetti />}
-              <FadePop style={styles.overlayInner}>
-                <Text style={styles.overlayTitle}>
-                  {duel.matchWinner === you ? t('youWin') : duel.matchWinner === -1 ? t('itsADraw') : t('youLose')}
+            <GameOverlay
+              title={duel.matchWinner === you ? t('youWin') : duel.matchWinner === -1 ? t('itsADraw') : t('youLose')}
+              backdrop={duel.matchWinner === you ? <Confetti /> : undefined}
+            >
+              {oppLeft && <Text style={styles.overlaySub}>{t('forfeitWin')}</Text>}
+              <Text style={styles.overlaySub}>{duel.matchWins[you]} : {duel.matchWins[opp]}</Text>
+              {ranked && ratingChange && (
+                <Text style={[styles.ratingDelta, { color: ratingChange.delta >= 0 ? palette.accent : palette.danger }]}>
+                  {ratingChange.delta >= 0 ? '+' : ''}{ratingChange.delta} → {ratingChange.newRating}
                 </Text>
-                {oppLeft && <Text style={styles.overlaySub}>{t('forfeitWin')}</Text>}
-                <Text style={styles.overlaySub}>{duel.matchWins[you]} : {duel.matchWins[opp]}</Text>
-                {ranked && ratingChange && (
-                  <Text style={[styles.ratingDelta, { color: ratingChange.delta >= 0 ? C.accent : '#ff6b6b' }]}>
-                    {ratingChange.delta >= 0 ? '+' : ''}{ratingChange.delta} → {ratingChange.newRating}
-                  </Text>
-                )}
-                {ranked || oppLeft ? (
-                  <TouchScale style={styles.bigBtn} onPress={handleExit} accessibilityLabel="duel-back">
-                    <Text style={styles.bigBtnText}>{t('done')}</Text>
-                  </TouchScale>
-                ) : role === 'host' ? (
-                  <TouchScale style={styles.bigBtn} onPress={startGame} accessibilityLabel="duel-restart">
-                    <Text style={styles.bigBtnText}>{t('playAgain')}</Text>
-                  </TouchScale>
-                ) : (
-                  <Text style={styles.overlaySub}>{t('waitingHost')}</Text>
-                )}
-                <TouchScale
-                  style={styles.shareBtn}
-                  onPress={() => {
-                    const won = duel.matchWinner === you;
-                    const msg = won
-                      ? t('shareDuelWin', { a: duel.matchWins[you], b: duel.matchWins[opp] })
-                      : t('shareDuelLoss');
-                    shareResult(msg).then((o) => {
-                      track(EVENTS.share, { where: 'duel', result: won ? 'win' : 'other', outcome: o });
-                      if (o === 'copied') {
-                        setShareNote(t('linkCopied'));
-                        setTimeout(() => setShareNote(''), 1500);
-                      }
-                    });
-                  }}
-                  accessibilityLabel="share-result"
-                >
-                  <Text style={styles.shareBtnText}>{shareNote || t('shareResultBtn')}</Text>
-                </TouchScale>
-              </FadePop>
-            </View>
+              )}
+              {ranked || oppLeft ? (
+                <GameButton title={t('done')} onPress={handleExit} a11y="duel-back" />
+              ) : role === 'host' ? (
+                <GameButton title={t('playAgain')} onPress={startGame} a11y="duel-restart" />
+              ) : (
+                <Text style={styles.overlaySub}>{t('waitingHost')}</Text>
+              )}
+              <GameButton
+                title={shareNote || t('shareResultBtn')}
+                variant="secondary"
+                onPress={() => {
+                  const won = duel.matchWinner === you;
+                  const msg = won
+                    ? t('shareDuelWin', { a: duel.matchWins[you], b: duel.matchWins[opp] })
+                    : t('shareDuelLoss');
+                  shareResult(msg).then((o) => {
+                    track(EVENTS.share, { where: 'duel', result: won ? 'win' : 'other', outcome: o });
+                    if (o === 'copied') {
+                      setShareNote(t('linkCopied'));
+                      setTimeout(() => setShareNote(''), 1500);
+                    }
+                  });
+                }}
+                a11y="share-result"
+              />
+            </GameOverlay>
           )}
         </View>
       </View>
 
-      <Dpad onTurn={doTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
+      {!isDesktop && <Dpad onTurn={doTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />}
 
-      <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="duel-back">
-        <Text style={styles.backText}>{t('leave')}</Text>
-      </TouchScale>
-    </View>
+      <GameButton title={t('leave')} variant="ghost" onPress={handleExit} a11y="duel-back" />
+    </ScreenShell>
     </GestureDetector>
   );
 }
@@ -612,99 +540,30 @@ function Rules() {
   );
 }
 
-function ScoreChip({
-  label,
-  color,
-  wins,
-  round,
-  rating,
-}: {
-  label: string;
-  color: string;
-  wins: number;
-  round: number;
-  rating?: number;
-}) {
-  return (
-    <View style={[styles.chip, { borderColor: color }]}>
-      <View style={styles.chipTop}>
-        <View style={[styles.chipDot, { backgroundColor: color, shadowColor: color, shadowOpacity: 0.9, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } }]} />
-        <Text style={styles.chipLabel}>{label}</Text>
-      </View>
-      <Text style={[styles.chipWins, { color }]} accessibilityLabel={`${label}-wins-${wins}`}>{wins}</Text>
-      {typeof rating === 'number' ? (
-        <Text style={styles.chipRound}>{rating} {t('ptsSuffix')}</Text>
-      ) : (
-        <Text style={styles.chipRound}>{round} {t('thisRound')}</Text>
-      )}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  // paddingTop/Bottom приходят снаружи через pad (safe-area insets), не хардкодим.
-  container: {
-    flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 12,
-  },
-  // Матч: шапка сверху, поле центрируется в свободном пространстве, D-pad снизу.
-  matchContainer: { flex: 1, backgroundColor: C.bg, alignItems: 'center', gap: 12 },
-  playArea: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
-  title: { fontFamily: fonts.display, color: C.text, fontSize: 26, letterSpacing: 1 },
   lobby: { alignItems: 'center', gap: 12, width: '100%', maxWidth: 360 },
-  rankBox: { alignItems: 'center', gap: 2, backgroundColor: C.board, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 40, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  rankBox: { alignItems: 'center', gap: 2, backgroundColor: palette.surface, borderRadius: radius.lg, paddingVertical: 14, paddingHorizontal: 40, borderWidth: 1, borderColor: palette.borderGlass },
   rankTier: { fontFamily: fonts.display, fontSize: 22 },
-  rankRating: { fontFamily: fonts.num, color: C.text, fontSize: 30 },
-  bigBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 36, alignItems: 'center' },
-  bigBtnText: { fontFamily: fonts.display, color: '#06180E', fontSize: 17 },
-  shareBtn: { paddingVertical: 9, paddingHorizontal: 22, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', backgroundColor: C.board },
-  shareBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 14 },
-  altBtn: { backgroundColor: C.board, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)', alignItems: 'center' },
-  altBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 15 },
-  subtle: { color: C.textDim, fontSize: 13 },
-  divider: { height: 1, backgroundColor: C.border, alignSelf: 'stretch', marginVertical: 4 },
+  rankRating: { fontFamily: fonts.num, color: palette.text, fontSize: 30 },
+  subtle: { fontFamily: fonts.body, color: palette.textDim, fontSize: 13 },
+  divider: { height: 1, backgroundColor: palette.border, alignSelf: 'stretch', marginVertical: 4 },
   joinRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  input: {
-    backgroundColor: C.board, borderRadius: 12, borderWidth: 1, borderColor: C.border, color: C.text,
-    fontSize: 22, fontWeight: '700', letterSpacing: 4, textAlign: 'center', paddingVertical: 10, width: 130,
-  },
-  joinBtn: { backgroundColor: C.board, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20, borderWidth: 1, borderColor: C.border },
-  codeBox: { alignItems: 'center', gap: 8, backgroundColor: C.board, borderRadius: 14, padding: 18 },
-  codeLabel: { color: C.textDim, fontSize: 13 },
-  codeValue: { fontFamily: fonts.num, color: '#7CF7D4', fontSize: 40, letterSpacing: 8 },
-  copyBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 18 },
-  copyBtnText: { color: '#08130b', fontSize: 14, fontWeight: '700' },
-  codeHint: { color: C.textDim, fontSize: 13 },
-  linkBtn: { paddingVertical: 4 },
-  linkText: { color: C.textDim, fontSize: 13 },
-  status: { color: C.text, fontSize: 16 },
+  codeInput: { width: 130, textAlign: 'center' },
+  copyBtn: { paddingVertical: 8, paddingHorizontal: 18 },
+  status: { fontFamily: fonts.body, color: palette.text, fontSize: 16 },
   rules: { gap: 4, alignItems: 'center', marginTop: 4 },
-  rulesText: { color: C.textDim, fontSize: 13, textAlign: 'center' },
+  rulesText: { fontFamily: fonts.body, color: palette.textDim, fontSize: 13, textAlign: 'center' },
   hud: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  chip: { backgroundColor: C.board, borderRadius: 12, paddingVertical: 6, paddingHorizontal: 16, alignItems: 'center', minWidth: 92, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  chipDot: { width: 12, height: 12, borderRadius: 6 },
   progressTrack: { width: '100%', maxWidth: 420, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
   progressL: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 4 },
   progressR: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 4 },
-  chipTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  chipDot: { width: 12, height: 12, borderRadius: 6 },
-  chipLabel: { color: C.textDim, fontSize: 12 },
-  chipWins: { fontFamily: fonts.num, color: C.text, fontSize: 22 },
-  chipRound: { fontFamily: fonts.body, color: C.textDim, fontSize: 11 },
   roundBadge: { alignItems: 'center' },
-  roundText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 14 },
-  roundSub: { fontFamily: fonts.body, color: C.textDim, fontSize: 11 },
+  roundText: { fontFamily: fonts.bodyBold, color: palette.text, fontSize: 14 },
+  roundSub: { fontFamily: fonts.body, color: palette.textDim, fontSize: 11 },
   youHint: { fontFamily: fonts.bodyBold, fontSize: 13 },
-  boostPill: { backgroundColor: 'rgba(255,215,94,0.18)', borderColor: '#FFD75E', borderWidth: 1, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 12 },
-  boostText: { fontFamily: fonts.bodyBold, color: '#FFE680', fontSize: 12, letterSpacing: 1 },
-  board: { backgroundColor: '#0C111B', borderRadius: 16, overflow: 'hidden', borderWidth: 1.5, borderColor: 'rgba(124,247,212,0.20)' },
-  eye: { position: 'absolute', backgroundColor: '#06121e' },
-  overlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(7,10,16,0.86)', alignItems: 'center', justifyContent: 'center',
-  },
-  overlayInner: { alignItems: 'center', justifyContent: 'center', gap: 12 },
-  overlayTitle: { fontFamily: fonts.display, color: C.text, fontSize: 26 },
-  overlaySub: { fontFamily: fonts.body, color: C.textDim, fontSize: 16 },
+  playArea: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
+  board: { backgroundColor: palette.board, borderRadius: 16, overflow: 'hidden', borderWidth: 1.5, borderColor: palette.borderGlow },
+  overlaySub: { fontFamily: fonts.body, color: palette.textDim, fontSize: 16, textAlign: 'center' },
   ratingDelta: { fontFamily: fonts.num, fontSize: 20 },
-  backBtn: { paddingVertical: 8, paddingHorizontal: 20 },
-  backText: { color: C.textDim, fontSize: 15 },
 });

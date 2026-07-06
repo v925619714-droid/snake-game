@@ -1,24 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { tierFor } from '../game/rating';
 import { type LeaderRow, fetchLeaderboard } from '../lib/leaderboard';
 import { LinearGradient } from 'expo-linear-gradient';
-import { fonts, tierStyle } from '../theme/tokens';
-import { TouchScale } from '../ui/anim';
+import { palette, fonts, radius, rgba, tierStyle } from '../theme/tokens';
+import { GameButton } from '../ui/GameButton';
+import { ScreenShell, ScreenTitle } from '../ui/Screen';
 import { t as tr, tierName } from '../lib/i18n';
 
-const C = {
-  bg: '#0B0F17',
-  board: '#121826',
-  border: '#1D2940',
-  text: '#E8F0FB',
-  textDim: '#8395AE',
-  accent: '#3DDC84',
-};
+// Инициалы: юникод-буквы/цифры (кириллица и т.п.), а не только [A-Za-z0-9] —
+// у русских имён аватар был «?» (B6).
+function initialsOf(name: string): string {
+  const tail = name.includes('-') ? name.split('-').pop() ?? name : name;
+  const letters = [...tail].filter((ch) => /[\p{L}\p{N}]/u.test(ch));
+  return (letters.slice(0, 2).join('') || '?').toUpperCase();
+}
 
 export default function Leaderboard({ myId, onBack }: { myId: string; onBack: () => void }) {
-  const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<LeaderRow[] | null>(null);
 
   const load = useCallback(() => {
@@ -31,11 +29,11 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
   }, [load]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-      <Text style={styles.title}>{tr('leaderboard')}</Text>
+    <ScreenShell maxWidth={472}>
+      <ScreenTitle>{tr('leaderboard')}</ScreenTitle>
 
       {rows === null ? (
-        <ActivityIndicator color={C.accent} accessibilityLabel="lb-loading" />
+        <ActivityIndicator color={palette.accent} accessibilityLabel="lb-loading" />
       ) : rows.length === 0 ? (
         <Text style={styles.empty} accessibilityLabel="lb-empty">{tr('lbEmpty')}</Text>
       ) : (
@@ -45,11 +43,18 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
             const me = r.id === myId;
             const top = i < 3;
             const medal = ['#FFD75E', '#D8DEE9', '#E0A86A'][i];
-            const tail = r.name.includes('-') ? r.name.split('-').pop() ?? r.name : r.name;
-            const initials = (tail.replace(/[^A-Za-z0-9]/g, '').slice(0, 2) || '?').toUpperCase();
+            const initials = initialsOf(r.name);
             const grad = tierStyle[t.name]?.grad ?? (['#888', '#555'] as const);
             return (
-              <View key={r.id} style={[styles.row, me && styles.rowMe]}>
+              <View
+                key={r.id}
+                style={[
+                  styles.row,
+                  // Тинт-подложка тир-цвета для топ-3 (B6).
+                  top && { backgroundColor: rgba(t.color.startsWith('#') ? t.color : '#888888', 0.08), borderColor: rgba(t.color, 0.25) },
+                  me && styles.rowMe,
+                ]}
+              >
                 <View style={[styles.rankWrap, top && { borderColor: medal, backgroundColor: 'rgba(255,255,255,0.05)' }]}>
                   <Text style={[styles.rank, top && { color: medal }]}>{i + 1}</Text>
                 </View>
@@ -75,52 +80,34 @@ export default function Leaderboard({ myId, onBack }: { myId: string; onBack: ()
         </ScrollView>
       )}
 
-      <TouchScale style={styles.btn} onPress={load} accessibilityLabel="lb-refresh">
-        <Text style={styles.btnText}>{tr('refresh')}</Text>
-      </TouchScale>
-      <TouchScale style={styles.back} onPress={onBack} accessibilityLabel="lb-back">
-        <Text style={styles.backText}>{tr('back')}</Text>
-      </TouchScale>
-    </View>
+      <GameButton title={tr('refresh')} variant="secondary" onPress={load} a11y="lb-refresh" />
+      <GameButton title={tr('back')} variant="ghost" onPress={onBack} a11y="lb-back" />
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: C.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 44,
-    paddingBottom: 24,
-    gap: 14,
-  },
-  title: { fontFamily: fonts.display, color: C.text, fontSize: 26, letterSpacing: 1 },
-  empty: { fontFamily: fonts.body, color: C.textDim, fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
-  list: { width: '100%', maxWidth: 440, flexGrow: 0 },
+  empty: { fontFamily: fonts.body, color: palette.textDim, fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
+  list: { width: '100%', flexGrow: 0 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: C.board,
-    borderRadius: 14,
+    backgroundColor: palette.surface,
+    borderRadius: radius.md,
     padding: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: palette.borderGlass,
   },
-  rowMe: { borderWidth: 1, borderColor: '#7CF7D4' },
+  rowMe: { borderWidth: 1, borderColor: palette.brand1 },
   rankWrap: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
-  rank: { fontFamily: fonts.num, color: C.textDim, fontSize: 15 },
+  rank: { fontFamily: fonts.num, color: palette.textDim, fontSize: 15 },
   avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, backgroundColor: 'rgba(255,255,255,0.04)' },
   avatarText: { fontFamily: fonts.bodyBold, fontSize: 13 },
-  name: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 16 },
+  name: { fontFamily: fonts.bodyBold, color: palette.text, fontSize: 16 },
   tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
-  tierPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  tierPill: { borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
   tierPillText: { fontFamily: fonts.bodyBold, fontSize: 11, color: '#0A1020' },
-  wl: { fontFamily: fonts.body, color: C.textDim, fontSize: 12 },
-  rating: { fontFamily: fonts.num, color: C.text, fontSize: 20 },
-  btn: { backgroundColor: C.board, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  btnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 15 },
-  back: { paddingVertical: 8, paddingHorizontal: 20 },
-  backText: { color: C.textDim, fontSize: 15 },
+  wl: { fontFamily: fonts.body, color: palette.textDim, fontSize: 12 },
+  rating: { fontFamily: fonts.num, color: palette.text, fontSize: 20 },
 });

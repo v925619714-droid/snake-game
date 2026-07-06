@@ -63,9 +63,10 @@ import { initSound, play as playSfx, releaseSound } from './src/lib/sound';
 import { shareResult } from './src/lib/share';
 import { initSettings, hLight, hError, hSuccess, getCtrlScheme, getCtrlSide } from './src/lib/settings';
 import { Dpad } from './src/ui/Dpad';
+import { SnakeCell, FoodCell } from './src/ui/BoardCells';
+import { useBoardPx, useIsDesktopWeb } from './src/lib/layout';
 import { type CoinPack, buyCoinPack, fetchCoinPacks, initIap } from './src/lib/iap';
-import { initI18n, t, tierName } from './src/lib/i18n';
-import { useBoardPx } from './src/lib/layout';
+import { initI18n, subscribeLang, t, tierName } from './src/lib/i18n';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Manrope_600SemiBold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
@@ -86,6 +87,7 @@ function speedFor(score: number): number {
 
 function AppInner() {
   const insets = useSafeAreaInsets();
+  const isDesktop = useIsDesktopWeb();
   // Поле соло-экрана: единый расчёт (src/lib/layout.ts) — реальная высота управления
   // вместо прежних рассогласованных констант. chrome = шапка + хинт + отступы.
   const boardPx = useBoardPx({ min: 176, max: 360, chrome: 128, sidePad: 32 });
@@ -178,6 +180,8 @@ function AppInner() {
   const [iapNote, setIapNote] = useState(''); // сообщение об ошибке покупки (магазин)
   const iapNoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [, setLangTick] = useState(0); // ререндер после initI18n/смены языка
+  // Смена языка в настройках перерисовывает всё дерево сразу (B3).
+  useEffect(() => subscribeLang(() => setLangTick((x) => x + 1)), []);
   const stateRef = useRef(state);
   stateRef.current = state;
   const scoreRef = useRef(state.score);
@@ -738,7 +742,7 @@ function AppInner() {
               </TouchScale>
             </View>
 
-            <TouchScale style={[styles.ctaWrap, styles.wide]} onPress={() => setMode('solo')} accessibilityLabel="play-solo">
+            <TouchScale style={[styles.ctaWrap, styles.ctaGlow, styles.wide]} onPress={() => setMode('solo')} accessibilityLabel="play-solo">
               <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.menuCta}>
                 <Text style={styles.menuCtaText}>{t('play')}</Text>
               </LinearGradient>
@@ -872,51 +876,22 @@ function AppInner() {
               {state.snake.map((p, i) => {
                 const isHead = i === 0;
                 return (
-                  <View
+                  <SnakeCell
                     key={i}
-                    style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 1, transform: [{ translateX: p.x * cell }, { translateY: p.y * cell }] }}
-                  >
-                    <View
-                      style={[
-                        {
-                          flex: 1,
-                          borderRadius: cell * (isHead ? 0.34 : 0.28),
-                          backgroundColor: isHead ? skin.head : shade(skin.body, (i / state.snake.length) * 0.5),
-                        },
-                        isHead && {
-                          shadowColor: skin.head,
-                          shadowOpacity: 0.9,
-                          shadowRadius: 6,
-                          shadowOffset: { width: 0, height: 0 },
-                          elevation: 6,
-                        },
-                      ]}
-                    >
-                      {isHead && (
-                        <>
-                          <View style={[styles.eye, { top: cell * 0.26, left: cell * 0.24, width: cell * 0.16, height: cell * 0.16, borderRadius: cell * 0.08 }]} />
-                          <View style={[styles.eye, { top: cell * 0.26, right: cell * 0.24, width: cell * 0.16, height: cell * 0.16, borderRadius: cell * 0.08 }]} />
-                        </>
-                      )}
-                    </View>
-                  </View>
+                    x={p.x}
+                    y={p.y}
+                    cell={cell}
+                    isHead={isHead}
+                    color={isHead ? skin.head : shade(skin.body, (i / state.snake.length) * 0.5)}
+                    glowColor={skin.head}
+                  />
                 );
               })}
 
-              <View
-                style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 2, transform: [{ translateX: state.food.x * cell }, { translateY: state.food.y * cell }] }}
-              >
-                <Animated.View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: COLORS.food, shadowColor: COLORS.food, shadowOpacity: 0.95, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 6, transform: [{ scale: foodScale }] }} />
-              </View>
+              <FoodCell x={state.food.x} y={state.food.y} cell={cell} color={COLORS.food} pad={2} scale={foodScale} />
 
               {state.fatFood && (
-                <View
-                  style={{ position: 'absolute', left: 0, top: 0, width: cell, height: cell, padding: 1, transform: [{ translateX: state.fatFood.x * cell }, { translateY: state.fatFood.y * cell }] }}
-                >
-                  <View style={{ flex: 1, borderRadius: cell / 2, backgroundColor: '#FFE680', shadowColor: '#FFD75E', shadowOpacity: 1, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 7, alignItems: 'center', justifyContent: 'center' }}>
-                    <View style={{ width: cell * 0.34, height: cell * 0.34, borderRadius: cell * 0.2, backgroundColor: '#fff' }} />
-                  </View>
-                </View>
+                <FoodCell x={state.fatFood.x} y={state.fatFood.y} cell={cell} kind="fat" />
               )}
 
               {state.status !== 'playing' && (
@@ -984,12 +959,13 @@ function AppInner() {
           {/* Фиксированная высота под хинт — поле не прыгает при старте/паузе. */}
           <View style={styles.hintSlot}>
             {state.status !== 'playing' && (
-              <Text style={styles.hint}>{t('swipeHint')}</Text>
+              <Text style={styles.hint}>{isDesktop ? t('keyboardHint') : t('swipeHint')}</Text>
             )}
           </View>
           </View>
 
-          <Dpad onTurn={handleTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
+          {/* Десктоп: мышь+клавиатура, экранные кнопки не нужны (B5). */}
+          {!isDesktop && <Dpad onTurn={handleTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />}
         </View>
         </GestureDetector>
         {showOnboarding && <Onboarding onDone={finishOnboarding} />}
@@ -1195,7 +1171,8 @@ const styles = StyleSheet.create({
   menuScroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 16 },
   // Шапка фиксируется сверху, поле центрируется в свободном пространстве (playArea),
   // D-pad прижат к нижнему inset — никаких дыр ни в dpad-, ни в swipe-режиме.
-  soloContainer: { flex: 1, alignItems: 'center', gap: 8, paddingHorizontal: 16 },
+  // maxWidth: на десктопе контент (и докнутый D-pad) держится у поля, а не у краёв монитора (B5).
+  soloContainer: { flex: 1, alignItems: 'center', gap: 8, paddingHorizontal: 16, width: '100%', maxWidth: 560, alignSelf: 'center' },
   playArea: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
   hintSlot: { height: 26, alignItems: 'center', justifyContent: 'center' },
   soloTop: { width: '100%', maxWidth: 420, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
@@ -1262,7 +1239,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ghostText: { fontFamily: fonts.bodyBold, color: COLORS.text, fontSize: 14 },
-  ctaWrap: { borderRadius: 999, overflow: 'hidden', ...elevation.glow },
+  // Glow ТОЛЬКО у главного действия (Play) и Daily-баннера — когда светится всё,
+  // не светится ничего (B4). Остальные CTA — градиент без тени.
+  ctaWrap: { borderRadius: 999, overflow: 'hidden' },
+  ctaGlow: { ...elevation.glow },
   cta: { paddingVertical: 9, paddingHorizontal: 22, alignItems: 'center' },
   ctaText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 14, letterSpacing: 0.5 },
   wide: { width: '100%', maxWidth: 360 },

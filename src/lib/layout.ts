@@ -2,9 +2,15 @@
 // Раньше каждый экран резервировал место под управление по-своему (336/356/330),
 // из-за чего поле обрезалось или оставались дыры. Теперь резерв считается из
 // РЕАЛЬНЫХ высот блока управления (см. Dpad.tsx: BTN=64, GAP=10) + высоты хрома экрана.
-import { useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getCtrlScheme } from './settings';
+
+// Десктопный браузер (мышь+клавиатура): D-pad не нужен, поле можно крупнее (B5).
+export function useIsDesktopWeb(): boolean {
+  const { width } = useWindowDimensions();
+  return Platform.OS === 'web' && width > 768;
+}
 
 // Фактические высоты блока управления:
 // dpad (ромб) = 3 кнопки × 64 + 2 зазора × 10 = 212; split = 2 × 64 + 10 = 138; swipe = 0.
@@ -20,7 +26,10 @@ export interface BoardPxOpts {
 export function useBoardPx({ min = 176, max = 360, chrome = 120, sidePad = 32 }: BoardPxOpts = {}): number {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const ctrl = CTRL_HEIGHTS[getCtrlScheme()];
+  const desktop = Platform.OS === 'web' && width > 768;
+  // Десктоп: управление с клавиатуры, D-pad скрыт → резерв 0, поле крупнее (до 520).
+  const ctrl = desktop ? 0 : CTRL_HEIGHTS[getCtrlScheme()];
+  const capMax = desktop ? Math.max(max, 520) : max;
   const free = height - insets.top - insets.bottom - chrome - ctrl;
-  return Math.max(min, Math.floor(Math.min(width - sidePad, free, max)));
+  return Math.max(min, Math.floor(Math.min(width - sidePad, free, capMax)));
 }

@@ -36,7 +36,7 @@ export function Confetti({ count = 22 }: { count?: number }) {
     );
   }, [parts]);
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
       {parts.map((p, i) => (
         <Animated.View
           key={i}

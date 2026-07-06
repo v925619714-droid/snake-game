@@ -1,16 +1,9 @@
 // Экран корпоративного режима «Shake Work Off» (FFA 5–10).
 // Главный экран маршрутизирует: Practice vs bots (локально) ИЛИ Team room (по сети).
 // Рендер поля общий (PartyBoard). Существующие режимы не затронуты — отдельный модуль.
-import { type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   PARTY_MAX,
   PARTY_MIN,
@@ -24,12 +17,19 @@ import {
 import { partyBotDir } from '../game/partyBot';
 import { type Direction, swipeToDirection } from '../game/logic';
 import { usePartyRoom } from '../net/usePartyRoom';
-import { fonts, shade } from '../theme/tokens';
-import { TouchScale, FadePop, Confetti } from '../ui/anim';
+import { palette, fonts, radius, shade } from '../theme/tokens';
+import { TouchScale, Confetti } from '../ui/anim';
 import { hLight, hSuccess, hError, getCtrlScheme, getCtrlSide } from '../lib/settings';
 import { Dpad } from '../ui/Dpad';
+import { GameButton } from '../ui/GameButton';
+import { GameInput } from '../ui/GameInput';
+import { GameOverlay } from '../ui/GameOverlay';
+import { CodeBox } from '../ui/CodeBox';
+import { HudChip } from '../ui/HudChip';
+import { ScreenShell, ScreenTitle } from '../ui/Screen';
+import { SnakeCell, FoodCell } from '../ui/BoardCells';
 import { t as tr } from '../lib/i18n';
-import { useBoardPx as useSharedBoardPx } from '../lib/layout';
+import { useBoardPx as useSharedBoardPx, useIsDesktopWeb } from '../lib/layout';
 import { play as playSfx } from '../lib/sound';
 import { shareResult, GAME_URL } from '../lib/share';
 import { EVENTS, track } from '../lib/analytics';
@@ -47,16 +47,6 @@ function teamInviteUrl(code: string): string {
       : GAME_URL;
   return `${base}?party=${code}`;
 }
-
-const C = {
-  bg: '#0B0F17',
-  board: '#0C111B',
-  text: '#E8F0FB',
-  textDim: '#8395AE',
-  surface: '#121826',
-  border: 'rgba(255,255,255,0.08)',
-  accent: '#3DDC84',
-};
 
 const PARTY_COLORS = [
   { body: '#ff5c5c', head: '#ffb0a3' },
@@ -100,36 +90,19 @@ function PartyBoard({
         return snake.map((p, i) => {
           const isHead = i === 0;
           return (
-            <View
+            <SnakeCell
               key={`${si}-${i}`}
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: cell,
-                height: cell,
-                padding: 0.5,
-                transform: [{ translateX: p.x * cell }, { translateY: p.y * cell }],
-              }}
-            >
-              <View
-                style={[
-                  {
-                    flex: 1,
-                    borderRadius: cell * (isHead ? 0.34 : 0.28),
-                    backgroundColor: isHead ? col.head : shade(col.body, (i / snake.length) * 0.5),
-                  },
-                  isHead && {
-                    shadowColor: col.head,
-                    shadowOpacity: 0.9,
-                    shadowRadius: mine ? 7 : 4,
-                    shadowOffset: { width: 0, height: 0 },
-                    elevation: mine ? 7 : 4,
-                  },
-                  isHead && mine && { borderWidth: 1.5, borderColor: '#fff' },
-                ]}
-              >
-                {isHead && (
+              x={p.x}
+              y={p.y}
+              cell={cell}
+              pad={0.5}
+              isHead={isHead}
+              color={isHead ? col.head : shade(col.body, (i / snake.length) * 0.5)}
+              glowColor={col.head}
+              eyeSize={0}
+              outlined={isHead && mine}
+              badge={
+                isHead ? (
                   <Text
                     style={[
                       styles.youBadge,
@@ -146,38 +119,22 @@ function PartyBoard({
                   >
                     {mine ? tr('youChip') : shortName(names[si])}
                   </Text>
-                )}
-              </View>
-            </View>
+                ) : undefined
+              }
+            />
           );
         });
       })}
       {state.foods.map((f, i) => (
-        <View
+        <FoodCell
           key={`f-${i}`}
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            width: cell,
-            height: cell,
-            padding: 1.5,
-            transform: [{ translateX: f.pos.x * cell }, { translateY: f.pos.y * cell }],
-          }}
-        >
-          <View
-            style={{
-              flex: 1,
-              borderRadius: cell / 2,
-              backgroundColor: f.fat ? '#FFE680' : '#F4F8FF',
-              shadowColor: f.fat ? '#FFD75E' : '#cfe0ff',
-              shadowOpacity: f.fat ? 1 : 0.9,
-              shadowRadius: f.fat ? 7 : 5,
-              shadowOffset: { width: 0, height: 0 },
-              elevation: f.fat ? 7 : 5,
-            }}
-          />
-        </View>
+          x={f.pos.x}
+          y={f.pos.y}
+          cell={cell}
+          pad={1.5}
+          kind={f.fat ? 'fat' : 'round'}
+          color="#F4F8FF"
+        />
       ))}
       {children}
     </View>
@@ -196,12 +153,10 @@ function useBoardPx() {
 
 // ── ЛОКАЛЬНАЯ ПРАКТИКА (vs боты) ──
 function PracticeParty({ onExit }: { onExit: () => void }) {
-  const insets = useSafeAreaInsets();
   const boardPx = useBoardPx();
   const [count, setCount] = useState(5);
   const [state, setState] = useState<PartyState | null>(null);
   const overDone = useRef(false);
-  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
 
   const start = useCallback((n: number) => {
     overDone.current = false;
@@ -257,8 +212,8 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
 
   if (!state) {
     return (
-      <View style={[styles.container, pad]}>
-        <Text style={styles.title}>{tr('practice')}</Text>
+      <ScreenShell maxWidth={420}>
+        <ScreenTitle>{tr('practice')}</ScreenTitle>
         <Text style={styles.subtitle}>{tr('practiceSub')}</Text>
         <View style={styles.countRow}>
           {COUNT_OPTIONS.map((n) => (
@@ -273,13 +228,9 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
           ))}
         </View>
         <Text style={styles.subtle}>{tr('players')}</Text>
-        <TouchScale style={styles.bigBtn} onPress={() => start(count)} accessibilityLabel="party-start">
-          <Text style={styles.bigBtnText}>{tr('start')}</Text>
-        </TouchScale>
-        <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
-          <Text style={styles.backText}>{tr('back')}</Text>
-        </TouchScale>
-      </View>
+        <GameButton title={tr('start')} onPress={() => start(count)} a11y="party-start" style={styles.wideBtn} />
+        <GameButton title={tr('back')} variant="ghost" onPress={onExit} a11y="party-back" />
+      </ScreenShell>
     );
   }
 
@@ -290,7 +241,6 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
       state={state}
       mySlot={0}
       boardPx={boardPx}
-      pad={pad}
       aliveCount={aliveCount}
       swipe={swipe}
       onTurn={doTurn}
@@ -305,7 +255,6 @@ function PracticeParty({ onExit }: { onExit: () => void }) {
 
 // ── СЕТЕВОЙ МАТЧ (команда по коду) ──
 function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string | null }) {
-  const insets = useSafeAreaInsets();
   const boardPx = useBoardPx();
   const room = usePartyRoom();
   const [name, setName] = useState('');
@@ -314,7 +263,6 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
   const [inviteNote, setInviteNote] = useState('');
   const overDone = useRef(false);
   const startTracked = useRef(false);
-  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
 
   // Пришли по ссылке-инвайту (?party=КОД): подставляем код, чистим URL — игрок вводит имя и жмёт Join.
   useEffect(() => {
@@ -382,50 +330,44 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
   // Форма: имя + создать/войти.
   if (room.conn === 'idle' || room.conn === 'error') {
     return (
-      <View style={[styles.container, pad]}>
-        <Text style={styles.title}>{tr('teamRoom')}</Text>
+      <ScreenShell maxWidth={420}>
+        <ScreenTitle>{tr('teamRoom')}</ScreenTitle>
         <Text style={styles.subtitle}>{tr('teamRoomSub')}</Text>
         {!!autoJoin && (
-          <Text style={[styles.subtle, { color: C.accent }]}>
+          <Text style={[styles.subtle, { color: palette.accent }]}>
             {tr('invitedToTeam', { c: joinCode || autoJoin })}
           </Text>
         )}
         {room.conn === 'error' && <Text style={styles.errText}>{tr('connErrRetry')}</Text>}
-        <TextInput
-          style={styles.nameInput}
+        <GameInput
           value={name}
           onChangeText={setName}
           placeholder={tr('yourName')}
-          placeholderTextColor={C.textDim}
           maxLength={20}
-          accessibilityLabel="party-name"
+          a11y="party-name"
+          style={styles.nameInput}
         />
-        <TouchScale style={styles.bigBtn} onPress={() => room.createRoom(name)} accessibilityLabel="party-create">
-          <Text style={styles.bigBtnText}>{tr('createTeamRoom')}</Text>
-        </TouchScale>
+        <GameButton title={tr('createTeamRoom')} onPress={() => room.createRoom(name)} a11y="party-create" style={styles.wideBtn} />
         <View style={styles.joinRow}>
-          <TextInput
-            style={styles.codeInput}
+          <GameInput
             value={joinCode}
-            onChangeText={(t) => setJoinCode(t.toUpperCase())}
+            onChangeText={(v) => setJoinCode(v.toUpperCase())}
             placeholder={tr('codePlaceholderShort')}
-            placeholderTextColor={C.textDim}
             autoCapitalize="characters"
             maxLength={5}
-            accessibilityLabel="party-join-code"
+            mono
+            a11y="party-join-code"
+            style={styles.codeInput}
           />
-          <TouchScale
-            style={styles.joinBtn}
+          <GameButton
+            title={tr('join')}
+            variant="secondary"
             onPress={() => joinCode.length >= 4 && room.joinRoom(joinCode, name)}
-            accessibilityLabel="party-join"
-          >
-            <Text style={styles.altBtnText}>{tr('join')}</Text>
-          </TouchScale>
+            a11y="party-join"
+          />
         </View>
-        <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
-          <Text style={styles.backText}>{tr('back')}</Text>
-        </TouchScale>
-      </View>
+        <GameButton title={tr('back')} variant="ghost" onPress={onExit} a11y="party-back" />
+      </ScreenShell>
     );
   }
 
@@ -434,17 +376,20 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
     const isHost = room.role === 'host';
     const enough = room.players.length >= PARTY_MIN;
     return (
-      <View style={[styles.container, pad]}>
-        <Text style={styles.title}>{tr('teamRoom')}</Text>
-        <View style={styles.codeBox}>
-          <Text style={styles.codeLabel}>{tr('roomCode')}</Text>
-          <Text style={styles.codeValue} accessibilityLabel={`party-code-${room.code}`}>{room.code}</Text>
-          <Text style={styles.codeHint}>{tr('shareCodeTeam')}</Text>
-          <Text style={styles.codeHint}>{tr('keepOpenTeam')}</Text>
-        </View>
-        <TouchScale style={styles.shareBtn} onPress={onShareInvite} accessibilityLabel="party-share-link">
-          <Text style={styles.shareBtnText}>{inviteNote || tr('shareInviteLink')}</Text>
-        </TouchScale>
+      <ScreenShell maxWidth={420}>
+        <ScreenTitle>{tr('teamRoom')}</ScreenTitle>
+        <CodeBox
+          label={tr('roomCode')}
+          code={room.code}
+          a11y={`party-code-${room.code}`}
+          hints={[tr('shareCodeTeam'), tr('keepOpenTeam')]}
+        />
+        <GameButton
+          title={inviteNote || tr('shareInviteLink')}
+          variant="secondary"
+          onPress={onShareInvite}
+          a11y="party-share-link"
+        />
         <Text style={styles.subtitle}>{tr('playersLabel')} ({room.players.length}/{PARTY_MAX})</Text>
         <View style={styles.playerList}>
           {Array.from({ length: PARTY_MAX }, (_, i) => {
@@ -472,18 +417,17 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
         </View>
         {isHost ? (
           <View style={styles.stakeBox}>
-            <Text style={styles.codeLabel}>{tr('onTheLineLabel')}</Text>
-            <TextInput
-              style={styles.stakeInput}
+            <Text style={styles.stakeLabel}>{tr('onTheLineLabel')}</Text>
+            <GameInput
               value={stakeText}
-              onChangeText={(t) => {
-                setStakeText(t);
-                room.setStake(t);
+              onChangeText={(v) => {
+                setStakeText(v);
+                room.setStake(v);
               }}
               placeholder={tr('stakePlaceholder')}
-              placeholderTextColor={C.textDim}
               maxLength={80}
-              accessibilityLabel="party-stake"
+              a11y="party-stake"
+              style={styles.stakeInput}
             />
             <View style={styles.stakeChips}>
               {(['stake1', 'stake2', 'stake3', 'stake4'] as const).map((k) => (
@@ -506,20 +450,18 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
         ) : null}
 
         {isHost ? (
-          <TouchScale
-            style={[styles.bigBtn, !enough && styles.bigBtnDisabled]}
+          <GameButton
+            title={enough ? tr('startMatch') : tr('needPlayers', { n: PARTY_MIN })}
             onPress={() => enough && room.startMatch()}
-            accessibilityLabel="party-start-match"
-          >
-            <Text style={styles.bigBtnText}>{enough ? tr('startMatch') : tr('needPlayers', { n: PARTY_MIN })}</Text>
-          </TouchScale>
+            disabled={!enough}
+            a11y="party-start-match"
+            style={styles.wideBtn}
+          />
         ) : (
           <Text style={styles.status}>{tr('waitingHost')}</Text>
         )}
-        <TouchScale style={styles.backBtn} onPress={handleExit} accessibilityLabel="party-leave">
-          <Text style={styles.backText}>{tr('leave')}</Text>
-        </TouchScale>
-      </View>
+        <GameButton title={tr('leave')} variant="ghost" onPress={handleExit} a11y="party-leave" />
+      </ScreenShell>
     );
   }
 
@@ -530,7 +472,6 @@ function NetParty({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string 
       state={room.state}
       mySlot={room.mySlot}
       boardPx={boardPx}
-      pad={pad}
       aliveCount={aliveCount}
       swipe={swipe}
       onTurn={doTurn}
@@ -549,7 +490,6 @@ function MatchView({
   state,
   mySlot,
   boardPx,
-  pad,
   aliveCount,
   swipe,
   onTurn,
@@ -563,7 +503,6 @@ function MatchView({
   state: PartyState;
   mySlot: number;
   boardPx: number;
-  pad: { paddingTop: number; paddingBottom: number };
   aliveCount: number;
   swipe: ReturnType<typeof Gesture.Pan>;
   onTurn: (d: Direction) => void;
@@ -574,6 +513,7 @@ function MatchView({
   mode: 'net' | 'practice';
   waitHost?: boolean;
 }) {
+  const isDesktop = useIsDesktopWeb();
   const total = state.snakes.length;
   const spectator = mySlot < 0;
   const youAlive = !spectator && state.alive[mySlot];
@@ -604,20 +544,15 @@ function MatchView({
 
   return (
     <GestureDetector gesture={swipe}>
-    <View style={[styles.matchContainer, pad]}>
+    <ScreenShell maxWidth={560} center={false}>
       <View style={styles.hud}>
-        <View style={[styles.chip, { borderColor: spectator ? C.border : PARTY_COLORS[mySlot % PARTY_COLORS.length].head }]}>
-          <Text style={styles.chipLabel}>{tr('youChip')}</Text>
-          <Text style={styles.chipVal}>{spectator ? '👁' : youAlive ? tr('aliveWord') : `#${youPlace}`}</Text>
-        </View>
-        <View style={styles.chip}>
-          <Text style={styles.chipLabel}>{tr('aliveChip')}</Text>
-          <Text style={styles.chipVal}>{aliveCount}/{total}</Text>
-        </View>
-        <View style={styles.chip}>
-          <Text style={styles.chipLabel}>{tr('round').toUpperCase()} {state.round}</Text>
-          <Text style={styles.chipVal}>{tr('winShort')} {myWins}/{PARTY_WINS_NEEDED}</Text>
-        </View>
+        <HudChip
+          label={tr('youChip')}
+          value={spectator ? '👁' : youAlive ? tr('aliveWord') : `#${youPlace}`}
+          borderColor={spectator ? palette.borderGlass : PARTY_COLORS[mySlot % PARTY_COLORS.length].head}
+        />
+        <HudChip label={tr('aliveChip')} value={`${aliveCount}/${total}`} />
+        <HudChip label={`${tr('round').toUpperCase()} ${state.round}`} value={`${tr('winShort')} ${myWins}/${PARTY_WINS_NEEDED}`} />
       </View>
 
       {!!stake && state.status === 'playing' && (
@@ -627,62 +562,52 @@ function MatchView({
       <View style={styles.playArea}>
       <PartyBoard state={state} mySlot={mySlot} boardPx={boardPx} names={names}>
           {state.status === 'roundOver' && (
-            <View style={styles.overlay}>
-              <FadePop style={styles.overlayInner}>
-                <Text style={styles.overlayTitle}>
-                  {state.roundWinner < 0
-                    ? tr('roundDraw')
-                    : state.roundWinner === mySlot
-                      ? tr('youWonRound')
-                      : `${nameOf(state.roundWinner)} ${tr('wonTheRound')}`}
-                </Text>
-                <Text style={styles.overlaySub}>
-                  {tr('firstTo')} {PARTY_WINS_NEEDED}
-                  {state.roundWinner >= 0 ? ` · ${nameOf(state.roundWinner)}: ${state.roundWins[state.roundWinner]}` : ''}
-                </Text>
-                <Text style={styles.overlaySub}>{tr('nextRound')}</Text>
-              </FadePop>
-            </View>
+            <GameOverlay
+              title={
+                state.roundWinner < 0
+                  ? tr('roundDraw')
+                  : state.roundWinner === mySlot
+                    ? tr('youWonRound')
+                    : `${nameOf(state.roundWinner)} ${tr('wonTheRound')}`
+              }
+            >
+              <Text style={styles.overlaySub}>
+                {tr('firstTo')} {PARTY_WINS_NEEDED}
+                {state.roundWinner >= 0 ? ` · ${nameOf(state.roundWinner)}: ${state.roundWins[state.roundWinner]}` : ''}
+              </Text>
+              <Text style={styles.overlaySub}>{tr('nextRound')}</Text>
+            </GameOverlay>
           )}
           {state.status === 'matchOver' && (
-            <View style={styles.overlay}>
-              {won && <Confetti />}
-              <FadePop style={styles.overlayInner}>
-                <Text style={styles.overlayTitle}>
-                  {won ? tr('dontWorkToday') : state.matchWinner < 0 ? tr('itsADraw') : `${nameOf(state.matchWinner)} ${tr('winsWord')}`}
-                </Text>
-                {!!stake && <Text style={styles.stakePrize}>🏆 {stake}</Text>}
-                {!spectator && !won && state.matchWinner >= 0 && (
-                  <Text style={styles.overlaySub}>{tr('youPlaced', { n: youPlace })}</Text>
-                )}
-                {finishOrder.length > 0 && (
-                  <View style={styles.finishList}>
-                    {finishOrder.slice(0, 5).map((slot, idx) => (
-                      <Text key={slot} style={styles.finishRow}>
-                        <Text style={{ color: PARTY_COLORS[slot % PARTY_COLORS.length].head }}>
-                          {idx === 0 ? '🏆 ' : `#${idx + 1} `}
-                        </Text>
-                        {nameOf(slot)}
-                        {slot === mySlot ? ` ${tr('youSuffix')}` : ''}
+            <GameOverlay
+              title={won ? tr('dontWorkToday') : state.matchWinner < 0 ? tr('itsADraw') : `${nameOf(state.matchWinner)} ${tr('winsWord')}`}
+              backdrop={won ? <Confetti /> : undefined}
+            >
+              {!!stake && <Text style={styles.stakePrize}>🏆 {stake}</Text>}
+              {!spectator && !won && state.matchWinner >= 0 && (
+                <Text style={styles.overlaySub}>{tr('youPlaced', { n: youPlace })}</Text>
+              )}
+              {finishOrder.length > 0 && (
+                <View style={styles.finishList}>
+                  {finishOrder.slice(0, 5).map((slot, idx) => (
+                    <Text key={slot} style={styles.finishRow}>
+                      <Text style={{ color: PARTY_COLORS[slot % PARTY_COLORS.length].head }}>
+                        {idx === 0 ? '🏆 ' : `#${idx + 1} `}
                       </Text>
-                    ))}
-                  </View>
-                )}
-                <TouchScale style={styles.shareBtn} onPress={onShare} accessibilityLabel="party-share">
-                  <Text style={styles.shareBtnText}>{shareNote || tr('shareResultBtn')}</Text>
-                </TouchScale>
-                {onAgain ? (
-                  <TouchScale style={styles.bigBtn} onPress={onAgain} accessibilityLabel="party-again">
-                    <Text style={styles.bigBtnText}>{tr('playAgain')}</Text>
-                  </TouchScale>
-                ) : waitHost ? (
-                  <Text style={styles.overlaySub}>{tr('waitingHost')}</Text>
-                ) : null}
-                <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-back">
-                  <Text style={styles.backText}>{tr('back')}</Text>
-                </TouchScale>
-              </FadePop>
-            </View>
+                      {nameOf(slot)}
+                      {slot === mySlot ? ` ${tr('youSuffix')}` : ''}
+                    </Text>
+                  ))}
+                </View>
+              )}
+              <GameButton title={shareNote || tr('shareResultBtn')} variant="secondary" onPress={onShare} a11y="party-share" />
+              {onAgain ? (
+                <GameButton title={tr('playAgain')} onPress={onAgain} a11y="party-again" />
+              ) : waitHost ? (
+                <Text style={styles.overlaySub}>{tr('waitingHost')}</Text>
+              ) : null}
+              <GameButton title={tr('back')} variant="ghost" onPress={onExit} a11y="party-back" />
+            </GameOverlay>
           )}
         </PartyBoard>
       </View>
@@ -693,19 +618,19 @@ function MatchView({
             {spectator
               ? tr('spectating')
               : youAlive
-                ? tr('swipeOrDpad')
+                ? isDesktop
+                  ? tr('keyboardHint')
+                  : tr('swipeOrDpad')
                 : tr('youAreOut')}
           </Text>
-          {!spectator && youAlive && (
+          {!spectator && youAlive && !isDesktop && (
             <Dpad onTurn={onTurn} scheme={getCtrlScheme()} side={getCtrlSide()} />
           )}
         </>
       )}
 
-      <TouchScale style={styles.leaveBtn} onPress={onExit} accessibilityLabel="party-leave">
-        <Text style={styles.backText}>{tr('leave')}</Text>
-      </TouchScale>
-    </View>
+      <GameButton title={tr('leave')} variant="ghost" onPress={onExit} a11y="party-leave" />
+    </ScreenShell>
     </GestureDetector>
   );
 }
@@ -755,104 +680,51 @@ function useKeyboardTurn(onTurn: (d: Direction) => void, enabled: boolean) {
 
 // ── маршрутизатор режима ──
 export default function PartyGame({ onExit, autoJoin }: { onExit: () => void; autoJoin?: string | null }) {
-  const insets = useSafeAreaInsets();
   const [screen, setScreen] = useState<'home' | 'practice' | 'net'>(autoJoin ? 'net' : 'home');
-  const pad = { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 };
 
   if (screen === 'practice') return <PracticeParty onExit={() => setScreen('home')} />;
   if (screen === 'net') return <NetParty onExit={() => setScreen('home')} autoJoin={autoJoin} />;
 
   return (
-    <View style={[styles.container, pad]}>
-      <Text style={[styles.title, { fontFamily: fonts.brand }]}>Shake Work Off</Text>
+    <ScreenShell maxWidth={420}>
+      <Text style={[styles.brandTitle]}>Shake Work Off</Text>
       <Text style={styles.subtitle}>{tr('partySub')}</Text>
-      <TouchScale style={styles.bigBtn} onPress={() => setScreen('net')} accessibilityLabel="party-team">
-        <Text style={styles.bigBtnText}>{tr('teamRoomBtn')}</Text>
-      </TouchScale>
-      <TouchScale style={styles.altBtn} onPress={() => setScreen('practice')} accessibilityLabel="party-practice">
-        <Text style={styles.altBtnText}>{tr('practiceVsBots')}</Text>
-      </TouchScale>
-      <TouchScale style={styles.backBtn} onPress={onExit} accessibilityLabel="party-exit">
-        <Text style={styles.backText}>{tr('back')}</Text>
-      </TouchScale>
-    </View>
+      <GameButton title={tr('teamRoomBtn')} onPress={() => setScreen('net')} a11y="party-team" style={styles.wideBtn} />
+      <GameButton title={tr('practiceVsBots')} variant="secondary" onPress={() => setScreen('practice')} a11y="party-practice" style={styles.wideBtn} />
+      <GameButton title={tr('back')} variant="ghost" onPress={onExit} a11y="party-exit" />
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  // paddingTop/Bottom приходят снаружи через pad (safe-area insets), не хардкодим.
-  container: {
-    flex: 1,
-    backgroundColor: C.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  // Матч: шапка сверху, поле центрируется в свободном пространстве, D-pad снизу.
-  matchContainer: { flex: 1, backgroundColor: C.bg, alignItems: 'center', gap: 12 },
-  playArea: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
-  title: { fontFamily: fonts.display, color: C.text, fontSize: 28, letterSpacing: 1 },
-  subtitle: { fontFamily: fonts.body, color: C.textDim, fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
-  errText: { fontFamily: fonts.bodyBold, color: '#ff6b6b', fontSize: 13 },
+  brandTitle: { fontFamily: fonts.brand, color: palette.text, fontSize: 28, letterSpacing: 1 },
+  subtitle: { fontFamily: fonts.body, color: palette.textDim, fontSize: 13, textAlign: 'center', paddingHorizontal: 24 },
+  errText: { fontFamily: fonts.bodyBold, color: palette.danger, fontSize: 13 },
   countRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
   countBtn: {
     width: 56,
     height: 56,
-    borderRadius: 16,
-    backgroundColor: C.surface,
+    borderRadius: radius.lg,
+    backgroundColor: palette.surface,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: palette.borderGlass,
   },
-  countBtnActive: { borderColor: C.accent, backgroundColor: 'rgba(61,220,132,0.12)' },
-  countText: { fontFamily: fonts.num, color: C.textDim, fontSize: 22 },
-  countTextActive: { color: C.text },
-  subtle: { color: C.textDim, fontSize: 13 },
-  bigBtn: { backgroundColor: C.accent, borderRadius: 999, paddingVertical: 14, paddingHorizontal: 40, alignItems: 'center', minWidth: 240 },
-  bigBtnDisabled: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border },
-  bigBtnText: { fontFamily: fonts.display, color: '#06180E', fontSize: 17 },
-  altBtn: { backgroundColor: C.surface, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 28, borderWidth: 1, borderColor: C.border, alignItems: 'center', minWidth: 240 },
-  altBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 15 },
-  backBtn: { paddingVertical: 8, paddingHorizontal: 20 },
-  backText: { color: C.textDim, fontSize: 15 },
-  leaveBtn: { paddingVertical: 6, paddingHorizontal: 20 },
-  nameInput: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    color: C.text,
-    fontSize: 18,
-    textAlign: 'center',
-    paddingVertical: 12,
-    width: 240,
-  },
+  countBtnActive: { borderColor: palette.accent, backgroundColor: 'rgba(61,220,132,0.12)' },
+  countText: { fontFamily: fonts.num, color: palette.textDim, fontSize: 22 },
+  countTextActive: { color: palette.text },
+  subtle: { fontFamily: fonts.body, color: palette.textDim, fontSize: 13 },
+  wideBtn: { minWidth: 240 },
+  nameInput: { width: 240 },
+  codeInput: { width: 150, textAlign: 'center' },
   joinRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  codeInput: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    color: C.text,
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: 4,
-    textAlign: 'center',
-    paddingVertical: 10,
-    width: 150,
-  },
-  joinBtn: { backgroundColor: C.surface, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 22, borderWidth: 1, borderColor: C.border },
-  codeBox: { alignItems: 'center', gap: 6, backgroundColor: C.surface, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 36, borderWidth: 1, borderColor: C.border },
-  codeLabel: { color: C.textDim, fontSize: 13 },
-  codeValue: { fontFamily: fonts.num, color: '#7CF7D4', fontSize: 42, letterSpacing: 10 },
-  codeHint: { color: C.textDim, fontSize: 12 },
-  status: { color: C.text, fontSize: 16 },
+  status: { fontFamily: fonts.body, color: palette.text, fontSize: 16 },
   playerList: { gap: 6, alignItems: 'flex-start', minHeight: 40 },
   playerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   playerDot: { width: 12, height: 12, borderRadius: 6 },
-  playerName: { fontFamily: fonts.body, color: C.text, fontSize: 15 },
-  playerEmpty: { color: C.textDim, opacity: 0.5 },
+  playerName: { fontFamily: fonts.body, color: palette.text, fontSize: 15 },
+  playerEmpty: { color: palette.textDim, opacity: 0.5 },
   youBadge: {
     position: 'absolute',
     fontFamily: fonts.bodyBold,
@@ -861,58 +733,24 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   hud: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  chip: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 18,
-    alignItems: 'center',
-    minWidth: 90,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  chipLabel: { fontFamily: fonts.bodyBold, color: C.textDim, fontSize: 10, letterSpacing: 1 },
-  chipVal: { fontFamily: fonts.num, color: C.text, fontSize: 18 },
+  playArea: { flex: 1, alignItems: 'center', justifyContent: 'center', width: '100%' },
   boardWrap: {
-    backgroundColor: C.board,
+    backgroundColor: palette.board,
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1.5,
-    borderColor: 'rgba(124,247,212,0.20)',
+    borderColor: palette.borderGlow,
   },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(7,10,16,0.86)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  overlayInner: { alignItems: 'center', gap: 12, paddingHorizontal: 20 },
-  overlayTitle: { fontFamily: fonts.display, color: C.text, fontSize: 24, textAlign: 'center' },
-  overlaySub: { fontFamily: fonts.body, color: C.textDim, fontSize: 15, textAlign: 'center' },
-  hint: { fontFamily: fonts.body, color: C.textDim, fontSize: 12, textAlign: 'center', paddingHorizontal: 16 },
-  stakeBar: { fontFamily: fonts.bodyBold, color: '#FFE680', fontSize: 13, textAlign: 'center', paddingHorizontal: 16 },
-  stakePrize: { fontFamily: fonts.bodyBold, color: '#FFE680', fontSize: 16, textAlign: 'center', paddingHorizontal: 16 },
+  overlaySub: { fontFamily: fonts.body, color: palette.textDim, fontSize: 15, textAlign: 'center' },
+  hint: { fontFamily: fonts.body, color: palette.textDim, fontSize: 12, textAlign: 'center', paddingHorizontal: 16 },
+  stakeBar: { fontFamily: fonts.bodyBold, color: palette.coinHi, fontSize: 13, textAlign: 'center', paddingHorizontal: 16 },
+  stakePrize: { fontFamily: fonts.bodyBold, color: palette.coinHi, fontSize: 16, textAlign: 'center', paddingHorizontal: 16 },
+  stakeLabel: { fontFamily: fonts.body, color: palette.textDim, fontSize: 13 },
   finishList: { gap: 3, alignItems: 'center', marginTop: 2 },
-  finishRow: { fontFamily: fonts.body, color: C.text, fontSize: 14, textAlign: 'center' },
-  shareBtn: { paddingVertical: 9, paddingHorizontal: 22, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.surface },
-  shareBtnText: { fontFamily: fonts.bodyBold, color: C.text, fontSize: 14 },
+  finishRow: { fontFamily: fonts.body, color: palette.text, fontSize: 14, textAlign: 'center' },
   stakeBox: { alignItems: 'center', gap: 8, width: '100%', maxWidth: 320 },
-  stakeInput: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    color: C.text,
-    fontSize: 15,
-    textAlign: 'center',
-    paddingVertical: 10,
-    width: '100%',
-  },
+  stakeInput: { width: '100%' },
   stakeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
-  stakeChip: { backgroundColor: C.surface, borderRadius: 999, paddingVertical: 5, paddingHorizontal: 12, borderWidth: 1, borderColor: C.border },
-  stakeChipText: { fontFamily: fonts.body, color: C.textDim, fontSize: 12 },
+  stakeChip: { backgroundColor: palette.surface, borderRadius: radius.pill, paddingVertical: 5, paddingHorizontal: 12, borderWidth: 1, borderColor: palette.borderGlass },
+  stakeChipText: { fontFamily: fonts.body, color: palette.textDim, fontSize: 12 },
 });

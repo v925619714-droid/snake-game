@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Linking, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette as C, gradients, fonts } from '../theme/tokens';
 import { TouchScale } from '../ui/anim';
+import { GameButton } from '../ui/GameButton';
+import { GameInput } from '../ui/GameInput';
+import { ScreenShell, ScreenTitle } from '../ui/Screen';
 import { type AuthUser, deleteAccount, sendEmailCode, signOut, verifyEmailCode } from '../lib/auth';
 import { t } from '../lib/i18n';
 
@@ -27,7 +29,6 @@ export default function Account({
   const [msg, setMsg] = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
   const [cooldown, setCooldown] = useState(0); // анти-спам: пауза перед повторной отправкой
-  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -103,8 +104,8 @@ export default function Account({
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
-      <Text style={styles.title}>{t('account')}</Text>
+    <ScreenShell maxWidth={412}>
+      <ScreenTitle>{t('account')}</ScreenTitle>
 
       {signedIn ? (
         <View style={styles.box}>
@@ -120,17 +121,14 @@ export default function Account({
           <Text style={styles.label}>{t('guestLabel')}</Text>
           <Text style={styles.hint}>{t('guestHint')}</Text>
 
-          <TextInput
-            style={styles.input}
+          <GameInput
             value={email}
             onChangeText={setEmail}
             placeholder={t('emailPlaceholder')}
-            placeholderTextColor={C.textFaint}
             autoCapitalize="none"
-            autoCorrect={false}
             keyboardType="email-address"
             editable={stage === 'idle' && !busy}
-            accessibilityLabel="account-email"
+            a11y="account-email"
           />
 
           {stage === 'idle' ? (
@@ -141,14 +139,12 @@ export default function Account({
             </TouchScale>
           ) : (
             <>
-              <TextInput
-                style={styles.input}
+              <GameInput
                 value={code}
                 onChangeText={setCode}
                 placeholder={t('codePlaceholder')}
-                placeholderTextColor={C.textFaint}
                 keyboardType="number-pad"
-                accessibilityLabel="account-code"
+                a11y="account-code"
               />
               <TouchScale style={styles.cta} onPress={verify} disabled={busy} accessibilityLabel="verify-code">
                 <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaGrad}>
@@ -175,16 +171,12 @@ export default function Account({
         </TouchScale>
       </View>
 
-      <TouchScale style={styles.back} onPress={onBack} accessibilityLabel="account-back">
-        <Text style={styles.backText}>{t('back')}</Text>
-      </TouchScale>
-    </View>
+      <GameButton title={t('back')} variant="ghost" onPress={onBack} a11y="account-back" />
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 16 },
-  title: { fontFamily: fonts.display, color: C.text, fontSize: 26, letterSpacing: 1 },
   box: {
     width: '100%',
     maxWidth: 380,
@@ -198,17 +190,6 @@ const styles = StyleSheet.create({
   label: { fontFamily: fonts.bodyBold, color: C.textDim, fontSize: 11, letterSpacing: 2 },
   email: { fontFamily: fonts.bodyBold, color: C.brand1, fontSize: 18 },
   hint: { fontFamily: fonts.body, color: C.textDim, fontSize: 13, lineHeight: 19 },
-  input: {
-    backgroundColor: C.board,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    color: C.text,
-    fontFamily: fonts.body,
-    fontSize: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
   cta: { borderRadius: 999, overflow: 'hidden' },
   ctaGrad: { paddingVertical: 12, alignItems: 'center' },
   ctaText: { fontFamily: fonts.display, color: C.onAccent, fontSize: 15 },
@@ -220,6 +201,4 @@ const styles = StyleSheet.create({
   dot: { color: C.textFaint, fontSize: 13 },
   delText: { color: C.danger },
   msg: { fontFamily: fonts.body, color: C.textDim, fontSize: 13, textAlign: 'center', maxWidth: 360 },
-  back: { paddingVertical: 8, paddingHorizontal: 20 },
-  backText: { fontFamily: fonts.body, color: C.textDim, fontSize: 15 },
 });

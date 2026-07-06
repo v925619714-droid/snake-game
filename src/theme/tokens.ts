@@ -82,22 +82,25 @@ export function shade(hex: string, t: number): string {
   return `rgb(${f(r)},${f(g)},${f(b)})`;
 }
 
+// hex → rgba-строка (для boxShadow с прозрачностью).
+export function rgba(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// Неоновое свечение. RN 0.85 поддерживает boxShadow на native И web — старые
+// shadow*-пропы работали только на iOS (web/Android выглядели плоско + deprecated-варн).
+export function glow(color: string, radiusPx = 16, opacity = 0.5): { boxShadow: string } {
+  return { boxShadow: `0 0 ${radiusPx}px ${color.startsWith('#') ? rgba(color, opacity) : color}` };
+}
+
 export const radius = { sm: 12, md: 14, lg: 18, xl: 24, pill: 999 };
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 
 export const elevation = {
-  card: {
-    shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-  },
-  glow: {
-    shadowColor: '#5CC8FF',
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-  },
+  card: { boxShadow: '0 10px 20px rgba(0,0,0,0.45)' },
+  glow: glow('#5CC8FF', 16, 0.5),
 };

@@ -51,7 +51,7 @@ export const Dpad = memo(function Dpad({
   // чередуются (валидный поворот в змейке всегда меняет ось).
   if (scheme === 'split') {
     return (
-      <View style={styles.splitRow} pointerEvents="box-none">
+      <View style={styles.splitRow}>
         <View style={styles.hPair}>
           <DirBtn dir="left" onTurn={onTurn} />
           <DirBtn dir="right" onTurn={onTurn} />
@@ -107,6 +107,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     paddingHorizontal: 12,
+    // box-none: тапы между кластерами уходят вниз (свайп-зоне); prop deprecated → style (B2)
+    pointerEvents: 'box-none',
   },
   hPair: { flexDirection: 'row', gap: GAP },
   vPair: { gap: GAP },

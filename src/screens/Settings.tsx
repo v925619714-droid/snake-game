@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { palette as C, fonts } from '../theme/tokens';
 import { TouchScale } from '../ui/anim';
+import { GameButton } from '../ui/GameButton';
+import { ScreenShell, ScreenTitle } from '../ui/Screen';
 import { isMuted, setMuted } from '../lib/sound';
 import {
   hapticsOn,
@@ -90,7 +91,6 @@ function Row({
 }
 
 export default function Settings({ onBack }: { onBack: () => void }) {
-  const insets = useSafeAreaInsets();
   const [sound, setSound] = useState(!isMuted());
   const [hap, setHap] = useState(hapticsOn());
   const [cb, setCb] = useState(colorblindOn());
@@ -99,8 +99,8 @@ export default function Settings({ onBack }: { onBack: () => void }) {
   const [lang, setLangState] = useState<Lang>(getLang());
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
-      <Text style={styles.title}>{t('settings')}</Text>
+    <ScreenShell maxWidth={412}>
+      <ScreenTitle>{t('settings')}</ScreenTitle>
 
       <View style={styles.box}>
         <SegRow<Lang>
@@ -184,16 +184,12 @@ export default function Settings({ onBack }: { onBack: () => void }) {
         )}
       </View>
 
-      <TouchScale style={styles.back} onPress={onBack} accessibilityLabel="settings-back">
-        <Text style={styles.backText}>{t('back')}</Text>
-      </TouchScale>
-    </View>
+      <GameButton title={t('back')} variant="ghost" onPress={onBack} a11y="settings-back" />
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', padding: 20, gap: 18 },
-  title: { fontFamily: fonts.display, color: C.text, fontSize: 26, letterSpacing: 1 },
   box: {
     width: '100%',
     maxWidth: 380,
@@ -223,6 +219,4 @@ const styles = StyleSheet.create({
   segBtnActive: { backgroundColor: C.btnPressed, borderColor: C.borderGlow },
   segText: { fontFamily: fonts.bodyBold, color: C.textDim, fontSize: 13 },
   segTextActive: { color: C.brand1 },
-  back: { paddingVertical: 8, paddingHorizontal: 20 },
-  backText: { fontFamily: fonts.body, color: C.textDim, fontSize: 15 },
 });

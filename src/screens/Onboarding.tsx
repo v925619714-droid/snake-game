@@ -1,7 +1,7 @@
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { palette as C, gradients, fonts, elevation } from '../theme/tokens';
+import { palette as C, gradients, fonts, elevation, glow } from '../theme/tokens';
 import { TouchScale, FadePop } from '../ui/anim';
 import { EVENTS, track } from '../lib/analytics';
 import { t, type StringKey } from '../lib/i18n';
@@ -16,15 +16,9 @@ interface Slide {
   visual: () => ReactElement;
 }
 
-function Dot({ color, glow }: { color: string; glow?: boolean }) {
+function Dot({ color, glowing }: { color: string; glowing?: boolean }) {
   return (
-    <View
-      style={[
-        styles.cell,
-        { backgroundColor: color },
-        glow && { shadowColor: color, shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 8 },
-      ]}
-    />
+    <View style={[styles.cell, { backgroundColor: color }, glowing && glow(color, 10, 0.9)]} />
   );
 }
 
@@ -35,11 +29,11 @@ const SLIDES: Slide[] = [
     body: 'ob1Body',
     visual: () => (
       <View style={styles.vizRow}>
-        <Dot color={C.redHead} glow />
+        <Dot color={C.redHead} glowing />
         <Dot color={C.red} />
         <Dot color={C.red} />
         <View style={{ width: 18 }} />
-        <Dot color={C.blueHead} glow />
+        <Dot color={C.blueHead} glowing />
         <Dot color={C.blue} />
         <Dot color={C.blue} />
       </View>
@@ -52,11 +46,11 @@ const SLIDES: Slide[] = [
     visual: () => (
       <View style={styles.vizRow}>
         <View style={styles.vizItem}>
-          <View style={[styles.foodDot, { backgroundColor: C.red, shadowColor: C.red }]} />
+          <View style={[styles.foodDot, { backgroundColor: C.red }, glow(C.red, 8, 0.9)]} />
           <Text style={[styles.vizMark, { color: C.accent }]}>{t('obEat')}</Text>
         </View>
         <View style={styles.vizItem}>
-          <View style={[styles.foodDot, { backgroundColor: C.blue, shadowColor: C.blue }]} />
+          <View style={[styles.foodDot, { backgroundColor: C.blue }, glow(C.blue, 8, 0.9)]} />
           <Text style={[styles.vizMark, { color: C.danger }]}>{t('obDeath')}</Text>
         </View>
       </View>
@@ -156,8 +150,8 @@ const styles = StyleSheet.create({
   vizRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   vizItem: { alignItems: 'center', gap: 8 },
   cell: { width: 22, height: 22, borderRadius: 7 },
-  foodDot: { width: 30, height: 30, borderRadius: 15, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 6, alignItems: 'center', justifyContent: 'center' },
-  boostDot: { backgroundColor: '#FFE680', shadowColor: '#FFD75E' },
+  foodDot: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  boostDot: { backgroundColor: '#FFE680', ...glow('#FFD75E', 8, 0.9) },
   boostCore: { width: 11, height: 11, borderRadius: 6, backgroundColor: '#fff' },
   vizMark: { fontFamily: fonts.bodyBold, fontSize: 13, letterSpacing: 1 },
   badge: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999 },

@@ -42,8 +42,20 @@ export async function initI18n(): Promise<void> {
 
 export const getLang = (): Lang => lang;
 
+// Подписка на смену языка (B3): смонтированные экраны перерисовываются сразу,
+// а не только после возврата в меню.
+const listeners = new Set<() => void>();
+export function subscribeLang(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+const notify = () => listeners.forEach((l) => l());
+
 export async function setLang(v: Lang): Promise<void> {
   lang = v;
+  notify();
   try {
     await AsyncStorage.setItem(LANG_KEY, v);
   } catch {}
@@ -72,6 +84,7 @@ const S = {
   score: { en: 'SCORE', ru: 'СЧЁТ', es: 'PUNTOS', de: 'PUNKTE', pt: 'PONTOS' },
   menuBack: { en: '‹ Menu', ru: '‹ Меню', es: '‹ Menú', de: '‹ Menü', pt: '‹ Menu' },
   swipeHint: { en: 'Swipe anywhere or use the D-pad', ru: 'Свайп в любом месте или кнопки', es: 'Desliza o usa la cruceta', de: 'Wischen oder Steuerkreuz nutzen', pt: 'Deslize ou use o direcional' },
+  keyboardHint: { en: 'Arrows / WASD', ru: 'Стрелки / WASD', es: 'Flechas / WASD', de: 'Pfeile / WASD', pt: 'Setas / WASD' },
   paused: { en: 'Paused', ru: 'Пауза', es: 'Pausa', de: 'Pause', pt: 'Pausa' },
   resume: { en: 'Resume', ru: 'Продолжить', es: 'Continuar', de: 'Weiter', pt: 'Continuar' },
   gameOver: { en: 'Game over', ru: 'Игра окончена', es: 'Fin del juego', de: 'Game Over', pt: 'Fim de jogo' },
