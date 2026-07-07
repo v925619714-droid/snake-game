@@ -86,6 +86,21 @@ function speedFor(score: number): number {
   return Math.max(70, 160 - score * 4);
 }
 
+// Валидация deep-link параметров из URL (?room/?party/?from) — не доверяем формату:
+// код комнаты должен совпадать с алфавитом генератора (A-Z, 2-9), иначе игнорируем
+// (мусорную строку в имя Realtime-канала не пускаем). Источник ссылки (from) — только
+// безопасные символы и короткий, прежде чем уйти в аналитику.
+function cleanRoomCode(v: string | null): string | null {
+  if (!v) return null;
+  const c = v.toUpperCase().trim();
+  return /^[A-Z2-9]{3,6}$/.test(c) ? c : null;
+}
+function cleanFrom(v: string | null): string | null {
+  if (!v) return null;
+  const c = v.replace(/[^\w-]/g, '').slice(0, 32);
+  return c || null;
+}
+
 function AppInner() {
   const insets = useSafeAreaInsets();
   const isDesktop = useIsDesktopWeb();
@@ -138,14 +153,14 @@ function AppInner() {
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('room')
+        ? cleanRoomCode(new URLSearchParams(window.location.search).get('room'))
         : null,
     [],
   );
   const initialFrom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('from')
+        ? cleanFrom(new URLSearchParams(window.location.search).get('from'))
         : null,
     [],
   );
@@ -153,7 +168,7 @@ function AppInner() {
   const initialParty = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('party')
+        ? cleanRoomCode(new URLSearchParams(window.location.search).get('party'))
         : null,
     [],
   );
@@ -239,13 +254,15 @@ function AppInner() {
     }
     reconciledRef.current = true;
 
+    // В аналитику НЕ отправляем email (прямой идентификатор): privacy.html обещает
+    // «аналитика привязана к анонимному id, не к личности». Личность связывается через
+    // distinct_id = uid на сервере, а не через PII в свойствах события.
     identify(p.id, {
       name: p.name,
       rating: p.rating,
       wins: p.wins,
       losses: p.losses,
       tier: tierFor(p.rating).name,
-      email: user.email ?? undefined,
       anon: user.isAnon,
     });
   }, [saveWallet]);

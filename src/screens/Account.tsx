@@ -74,7 +74,8 @@ export default function Account({
       onChanged();
       setTimeout(onBack, 900); // авто-возврат на главный экран
     } else {
-      setMsg(r.error || t('invalidCode'));
+      // Не светим внутреннюю ошибку провайдера (rate-limit/конфиг) — только generic.
+      setMsg(t('invalidCode'));
     }
   };
 
@@ -99,7 +100,7 @@ export default function Account({
     if (r.ok) {
       onDeleted();
     } else {
-      setMsg(r.error || t('deleteFail'));
+      setMsg(t('deleteFail'));
     }
   };
 
