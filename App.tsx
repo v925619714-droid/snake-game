@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -68,6 +69,7 @@ import { IconGift, IconSliders, IconTarget } from './src/ui/icons';
 import { useBoardPx, useIsDesktopWeb } from './src/lib/layout';
 import { type CoinPack, buyCoinPack, fetchCoinPacks, initIap } from './src/lib/iap';
 import { initI18n, subscribeLang, t, tierName } from './src/lib/i18n';
+import { checkVersionGate } from './src/lib/appConfig';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
 import { Manrope_600SemiBold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
@@ -150,6 +152,11 @@ function AppInner() {
   const questsRef = useRef(quests);
   questsRef.current = quests;
   const [showQuests, setShowQuests] = useState(false);
+  // Гейт минимальной версии: бэкенд может потребовать обновления (для будущих cutover'ов).
+  const [versionBlocked, setVersionBlocked] = useState(false);
+  useEffect(() => {
+    checkVersionGate().then((g) => setVersionBlocked(g.blocked)).catch(() => {});
+  }, []);
   const initialRoom = useMemo(
     () =>
       Platform.OS === 'web' && typeof window !== 'undefined'
@@ -645,6 +652,26 @@ function AppInner() {
 
   if (!fontsLoaded) {
     return <View style={styles.boot} />;
+  }
+
+  // Блокирующий экран «обновите приложение» (версия ниже минимально поддерживаемой).
+  if (versionBlocked) {
+    const storeUrl =
+      Platform.OS === 'ios'
+        ? 'https://apps.apple.com/app/id6785279802'
+        : 'https://apps.rustore.ru/app/com.kanaewvs.snake';
+    return (
+      <LinearGradient colors={gradients.vignette} style={[styles.bg, styles.gateWrap]}>
+        <StatusBar style="light" />
+        <Text style={styles.gateTitle}>{t('updateTitle')}</Text>
+        <Text style={styles.gateBody}>{t('updateBody')}</Text>
+        <TouchScale style={styles.gateBtnWrap} onPress={() => Linking.openURL(storeUrl).catch(() => {})} accessibilityLabel="update-now">
+          <LinearGradient colors={gradients.play} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.gateBtn}>
+            <Text style={styles.gateBtnText}>{t('updateNow')}</Text>
+          </LinearGradient>
+        </TouchScale>
+      </LinearGradient>
+    );
   }
 
   if (mode === 'account') {
@@ -1179,6 +1206,12 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   bg: { flex: 1 },
   boot: { flex: 1, backgroundColor: COLORS.bg },
+  gateWrap: { alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 },
+  gateTitle: { fontFamily: fonts.display, color: COLORS.text, fontSize: 24, textAlign: 'center' },
+  gateBody: { fontFamily: fonts.body, color: COLORS.textDim, fontSize: 15, textAlign: 'center', lineHeight: 22, maxWidth: 320 },
+  gateBtnWrap: { borderRadius: 999, overflow: 'hidden', marginTop: 8, ...elevation.glow },
+  gateBtn: { paddingVertical: 14, paddingHorizontal: 44, alignItems: 'center' },
+  gateBtnText: { fontFamily: fonts.display, color: COLORS.onAccent, fontSize: 17 },
   eye: { position: 'absolute', backgroundColor: '#06121e' },
   container: {
     flex: 1,
