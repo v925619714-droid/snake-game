@@ -4,19 +4,23 @@
 // МОНЕТИЗИРУЕМОМ аккаунте (КЗ); на билде без продуктов fetchCoinPacks вернёт [].
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { COIN_PACKS, type CoinPack } from './iapProducts';
+import {
+  buyCoinPackRustore,
+  fetchCoinPacksRustore,
+  hasIapRustore,
+  initIapRustore,
+} from './iapRustore';
 
-// Consumable-пакеты монет. SKU должны 1:1 совпадать с продуктами в ASC/Play Console.
-export const COIN_PACKS: { sku: string; coins: number }[] = [
-  { sku: 'com.kanaewvs.snake.coins100', coins: 100 },
-  { sku: 'com.kanaewvs.snake.coins600', coins: 600 },
-  { sku: 'com.kanaewvs.snake.coins1500', coins: 1500 },
-];
+// Каталог паков — единый для всех провайдеров (см. iapProducts.ts). Ре-экспорт, чтобы
+// потребители (App.tsx) продолжали импортировать из './iap' без изменений.
+export { COIN_PACKS };
+export type { CoinPack };
 
-export interface CoinPack {
-  sku: string;
-  coins: number;
-  price: string; // локализованная цена из стора ("$0.99")
-}
+// На RuStore-сборке (флаг EXPO_PUBLIC_STORE=rustore) покупки идут через нативный RuStore
+// Billing SDK + серверную валидацию (iapRustore.ts), а НЕ через expo-iap (Apple/Play Billing,
+// который на APK из RuStore не работает).
+const USE_RUSTORE = process.env.EXPO_PUBLIC_STORE === 'rustore';
 
 // Нативный модуль нельзя импортировать статически: на web requireNativeModule падает
 // при загрузке. Условный require выполняется только вне web.
@@ -28,7 +32,7 @@ if (Platform.OS !== 'web') {
   } catch {}
 }
 
-export const hasIap = (): boolean => iap !== null;
+export const hasIap = (): boolean => (USE_RUSTORE ? hasIapRustore() : iap !== null);
 
 let connected = false;
 
@@ -64,6 +68,7 @@ export function initIap(
   onCoins: (coins: number, sku: string) => void,
   onError?: (code?: string) => void,
 ): () => void {
+  if (USE_RUSTORE) return initIapRustore(onCoins, onError);
   if (!iap) return () => {};
   const mod = iap;
   let disposed = false;
@@ -127,6 +132,7 @@ export function initIap(
 
 // Список паков с локализованными ценами. [] = стор недоступен/продукты не заведены → UI прячет секцию.
 export async function fetchCoinPacks(): Promise<CoinPack[]> {
+  if (USE_RUSTORE) return fetchCoinPacksRustore();
   if (!iap || !connected) return [];
   try {
     const products = await iap.fetchProducts({ skus: COIN_PACKS.map((p) => p.sku), type: 'in-app' });
@@ -142,6 +148,7 @@ export async function fetchCoinPacks(): Promise<CoinPack[]> {
 // Запуск покупки. Успех придёт в purchaseUpdatedListener (initIap); синхронный отказ
 // стора (нет соединения и т.п.) — false, чтобы UI показал сообщение об ошибке.
 export async function buyCoinPack(sku: string): Promise<boolean> {
+  if (USE_RUSTORE) return buyCoinPackRustore(sku);
   if (!iap) return false;
   try {
     await iap.requestPurchase({
