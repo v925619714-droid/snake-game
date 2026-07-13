@@ -17,6 +17,14 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+*.cer
+
+# iOS local credentials (SECRETS — p12 password inside credentials.json)
+credentials.json
+ios-credentials/
+
+# Google Play service account key (SECRETS)
+google-play-service-account.json
 
 # Metro
 .metro-health-check*
@@ -45,3 +53,6 @@ yarn-error.*
 run-web.cmd
 run-static.cmd
 .env.local.supabase-backup
+rustore-private-key.pem
+android-keystore.pass.txt
+*.apk
