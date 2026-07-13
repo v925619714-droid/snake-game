@@ -1,17 +1,14 @@
-// Сетевой контур корпоративного режима «Shake Work Off» (FFA 5–10), host-authoritative
-// на Supabase Broadcast. ОТДЕЛЬНЫЙ хук — НЕ трогает useRoom.ts (1v1/ranked).
-//
-// Модель: все в канале party-<code>. Presence по уникальному id игрока. Хост = минимальный
-// id (детерминированно). Хост на старте «замораживает» roster (sorted ids → слоты 0..N-1),
-// рассылает pstart{roster,state}, затем каждый тик гоняет partyStep и рассылает pstate.
-// Гости шлют pinput{pid,dir}; хост применяет partyTurn. Гости лишь рендерят снапшот.
-// Поздний вход — только зритель (slot=-1), в roster не попадает. Реэлекция хоста и
-// обработка дисконнекта — в Ф4 (здесь host-drop замораживает матч — известное ограничение).
-import { type RealtimeChannel } from '@supabase/supabase-js';
+// Office Royale (5–10) через свой игровой сервер (Colyseus, wss://snake-rt). Сервер
+// авторитетный: хост даёт старт, сервер крутит partyStep и рассылает 'state'. Интерфейс
+// хука сохранён 1:1 с прежним (Supabase), чтобы PartyGame не менялся.
+// Протокол (server/src/rooms/PartyRoom.ts): комната 'party', filterBy code;
+//   сервер→клиент: joined{host,code}, lobby{players:[{id,name}],stake}, stake{stake},
+//     start{names,stake}, state(PartyState);
+//   клиент→сервер: name{name}, stake{stake}, start{}, input{dir}. Слот = порядок входа.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Client, type Room } from 'colyseus.js';
+import { type PartyState } from '../game/party';
 import { type Direction } from '../game/logic';
-import { type PartyState, PARTY_MIN, partyKill, partyNewMatch, partyNextRound, partyStep, partyTurn } from '../game/party';
-import { supabase } from '../lib/supabase';
 
 export type PartyConn = 'idle' | 'connecting' | 'lobby' | 'playing' | 'ended' | 'error';
 export type PartyRole = 'host' | 'guest';
@@ -21,18 +18,13 @@ export interface PartyPlayer {
   slot: number;
 }
 
-const TICK_MS = 150;
-const ROUND_BREAK_MS = 2600; // пауза между раундами best-of (показываем итог раунда)
+const WS_URL = process.env.EXPO_PUBLIC_GAME_WS || 'wss://snake-rt.skillmake.ru';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 function randomCode(): string {
   let s = '';
   for (let i = 0; i < 5; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
   return s;
-}
-
-function randomId(): string {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
 
 export function usePartyRoom() {
@@ -42,322 +34,114 @@ export function usePartyRoom() {
   const [players, setPlayers] = useState<PartyPlayer[]>([]);
   const [mySlot, setMySlot] = useState<number>(-1);
   const [state, setState] = useState<PartyState | null>(null);
-  const [stake, setStakeState] = useState(''); // что получает победитель («сегодня не работает»)
-  const [names, setNames] = useState<string[]>([]); // имена по слотам (для result-card)
+  const [stake, setStakeState] = useState('');
+  const [names, setNames] = useState<string[]>([]);
+  const [myId, setMyId] = useState('');
 
-  const chRef = useRef<RealtimeChannel | null>(null);
-  const myIdRef = useRef('');
-  const myNameRef = useRef('Player');
-  const roleRef = useRef<PartyRole | null>(null);
-  const stateRef = useRef<PartyState | null>(null);
-  const rosterRef = useRef<string[]>([]); // ids в порядке слотов (заморожен на старте)
-  const mySlotRef = useRef(-1);
+  const clientRef = useRef<Client | null>(null);
+  const roomRef = useRef<Room | null>(null);
+  const playersRef = useRef<PartyPlayer[]>([]);
   const startedRef = useRef(false);
-  const presenceIdsRef = useRef<string[]>([]); // текущие id в лобби (sorted)
-  const loopRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const breakRef = useRef<ReturnType<typeof setTimeout> | null>(null); // пауза между раундами
-  const startLoopRef = useRef<() => void>(() => {});
-  const seqRef = useRef(0);
-  const lastSeqRef = useRef(0);
-  const inputRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stakeRef = useRef('');
-  const namesRef = useRef<string[]>([]);
 
-  const apply = useCallback((s: PartyState | null) => {
-    stateRef.current = s;
-    setState(s);
-    if (s && s.status === 'matchOver') setConn('ended');
-  }, []);
+  const getClient = (): Client => {
+    if (!clientRef.current) clientRef.current = new Client(WS_URL);
+    return clientRef.current;
+  };
 
-  const stopLoop = useCallback(() => {
-    if (loopRef.current) {
-      clearInterval(loopRef.current);
-      loopRef.current = null;
+  const disposeRoom = useCallback(() => {
+    const r = roomRef.current;
+    roomRef.current = null;
+    if (r) {
+      try {
+        r.removeAllListeners();
+        r.leave();
+      } catch {}
     }
   }, []);
 
-  const broadcastState = useCallback((s: PartyState) => {
-    seqRef.current += 1;
-    chRef.current?.send({ type: 'broadcast', event: 'pstate', payload: { state: s, seq: seqRef.current } });
-  }, []);
+  const wire = useCallback((room: Room) => {
+    disposeRoom();
+    roomRef.current = room;
+    setMyId(room.sessionId);
+    startedRef.current = false;
 
-  // Раунд закончился (best-of) — пауза, затем следующий раунд (возрождение всех).
-  const scheduleNextRound = useCallback(() => {
-    stopLoop();
-    if (breakRef.current) clearTimeout(breakRef.current);
-    breakRef.current = setTimeout(() => {
-      breakRef.current = null;
-      const cur = stateRef.current;
-      if (!cur || cur.status === 'matchOver') return;
-      const nr = partyNextRound(cur);
-      apply(nr);
-      broadcastState(nr);
-      startLoopRef.current();
-    }, ROUND_BREAK_MS);
-  }, [apply, broadcastState, stopLoop]);
-
-  const startLoop = useCallback(() => {
-    stopLoop();
-    loopRef.current = setInterval(() => {
-      const cur = stateRef.current;
-      if (!cur || cur.status !== 'playing') return;
-      const next = partyStep(cur);
-      apply(next);
-      broadcastState(next);
-      if (next.status === 'roundOver') scheduleNextRound();
-      else if (next.status === 'matchOver') stopLoop();
-    }, TICK_MS);
-  }, [apply, broadcastState, stopLoop, scheduleNextRound]);
-  startLoopRef.current = startLoop;
-
-  const connect = useCallback(
-    (asRole: PartyRole, roomCode: string, name: string) => {
-      setConn('connecting');
-      setRole(asRole);
-      roleRef.current = asRole;
-      setCode(roomCode);
-      myIdRef.current = randomId();
-      myNameRef.current = (name || 'Player').slice(0, 20);
-      startedRef.current = false;
-      rosterRef.current = [];
-      mySlotRef.current = -1;
-      setMySlot(-1);
-      seqRef.current = 0;
-      lastSeqRef.current = 0;
-      presenceIdsRef.current = [];
-
-      const ch = supabase.channel(`party-${roomCode}`, {
-        config: { broadcast: { self: false }, presence: { key: myIdRef.current } },
-      });
-      chRef.current = ch;
-
-      ch.on('presence', { event: 'sync' }, () => {
-        const st = ch.presenceState() as Record<string, Array<{ name?: string; at?: number }>>;
-        const ids = Object.keys(st).sort();
-        presenceIdsRef.current = ids;
-
-        if (!startedRef.current) {
-          // Лобби: список игроков, хост = минимальный id.
-          setPlayers(ids.map((id, idx) => ({ id, name: st[id]?.[0]?.name ?? 'Player', slot: idx })));
-          const host = ids[0];
-          const r: PartyRole = myIdRef.current === host ? 'host' : 'guest';
-          roleRef.current = r;
-          setRole(r);
-          setConn('lobby');
-          return;
-        }
-
-        // МАТЧ (Ф4 устойчивость): авторитет = присутствующий участник roster с наименьшим
-        // слотом. Если ушёл хост — авторитет переходит к следующему (переизбрание); ушедшие
-        // слоты убиваем, матч продолжается.
-        const roster = rosterRef.current;
-        if (roster.length === 0) return;
-        const present = new Set(ids);
-        let authSlot = -1;
-        for (let s = 0; s < roster.length; s++) {
-          if (present.has(roster[s])) {
-            authSlot = s;
-            break;
-          }
-        }
-        const amHost = authSlot >= 0 && roster[authSlot] === myIdRef.current;
-        if (amHost) {
-          if (roleRef.current !== 'host') {
-            // переизбрание: подхватываем авторитет и продолжаем с последнего снапшота
-            roleRef.current = 'host';
-            setRole('host');
-            seqRef.current = lastSeqRef.current;
-            if (stateRef.current?.status === 'roundOver') scheduleNextRound();
-            else startLoop();
-          }
-          const cur = stateRef.current;
-          if (cur && cur.status === 'playing') {
-            let s2 = cur;
-            let changed = false;
-            for (let s = 0; s < roster.length; s++) {
-              if (!present.has(roster[s]) && s2.alive[s]) {
-                s2 = partyKill(s2, s);
-                changed = true;
-              }
-            }
-            if (changed) {
-              apply(s2);
-              broadcastState(s2);
-              if (s2.status === 'roundOver') scheduleNextRound(); // дисконнект завершил раунд
-            }
-          }
-        } else if (roleRef.current === 'host') {
-          // потеряли авторитет (редкий случай) — прекращаем вести симуляцию
-          roleRef.current = 'guest';
-          setRole('guest');
-          stopLoop();
-        }
-      });
-
-      // Старт матча: roster (id→слот) + начальное состояние.
-      ch.on('broadcast', { event: 'pstart' }, ({ payload }) => {
-        const roster = payload.roster as string[];
-        startedRef.current = true;
-        rosterRef.current = roster;
-        const slot = roster.indexOf(myIdRef.current);
-        mySlotRef.current = slot;
-        setMySlot(slot);
-        const nm = (payload.names as string[]) ?? [];
-        namesRef.current = nm;
-        setNames(nm);
-        const stk = (payload.stake as string) ?? '';
-        stakeRef.current = stk;
-        setStakeState(stk);
-        lastSeqRef.current = 0;
-        apply(payload.state as PartyState);
-        setConn('playing');
-      });
-
-      // Снапшот от хоста (гости применяют, дропая устаревшие).
-      ch.on('broadcast', { event: 'pstate' }, ({ payload }) => {
-        if (roleRef.current === 'host') return;
-        const seq = typeof payload.seq === 'number' ? payload.seq : 0;
-        if (seq && seq <= lastSeqRef.current) return;
-        lastSeqRef.current = seq;
-        apply(payload.state as PartyState);
-      });
-
-      // Ввод гостя (применяет только хост).
-      ch.on('broadcast', { event: 'pinput' }, ({ payload }) => {
-        if (roleRef.current !== 'host') return;
-        const cur = stateRef.current;
-        if (cur) apply(partyTurn(cur, payload.pid as number, payload.dir as Direction));
-      });
-
-      // Хост задал/сменил ставку в лобби — все обновляют отображение.
-      ch.on('broadcast', { event: 'pstake' }, ({ payload }) => {
-        const t = (payload.stake as string) ?? '';
-        stakeRef.current = t;
-        setStakeState(t);
-      });
-
-      // Поздний/переподключившийся клиент просит синхронизацию.
-      ch.on('broadcast', { event: 'phello' }, () => {
-        if (roleRef.current === 'host' && startedRef.current && stateRef.current) {
-          ch.send({ type: 'broadcast', event: 'pstart', payload: { roster: rosterRef.current, state: stateRef.current } });
-        }
-      });
-
-      ch.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          ch.track({ name: myNameRef.current, at: Date.now() });
-          if (!startedRef.current) setConn('lobby');
-          ch.send({ type: 'broadcast', event: 'phello', payload: {} });
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          if (!startedRef.current) setConn('error');
-        }
-      });
-    },
-    [apply, startLoop, stopLoop, broadcastState, scheduleNextRound],
-  );
-
-  const createRoom = useCallback(
-    (name: string) => {
-      const c = randomCode();
-      connect('host', c, name);
-      return c;
-    },
-    [connect],
-  );
-
-  const joinRoom = useCallback(
-    (c: string, name: string) => {
-      connect('guest', c.toUpperCase().trim(), name);
-    },
-    [connect],
-  );
-
-  const startMatch = useCallback(() => {
-    if (roleRef.current !== 'host' || startedRef.current) return;
-    const roster = presenceIdsRef.current.slice();
-    if (roster.length < PARTY_MIN) return;
-    startedRef.current = true;
-    rosterRef.current = roster;
-    const slot = roster.indexOf(myIdRef.current);
-    mySlotRef.current = slot;
-    setMySlot(slot);
-    const stPres = (chRef.current?.presenceState() ?? {}) as Record<string, Array<{ name?: string }>>;
-    const namesArr = roster.map((id) => stPres[id]?.[0]?.name ?? 'Player');
-    namesRef.current = namesArr;
-    setNames(namesArr);
-    const init = partyNewMatch(roster.length);
-    apply(init);
-    setConn('playing');
-    chRef.current?.send({
-      type: 'broadcast',
-      event: 'pstart',
-      payload: { roster, names: namesArr, state: init, stake: stakeRef.current },
+    room.onMessage('joined', (m: { host: boolean; code: string }) => {
+      setRole(m.host ? 'host' : 'guest');
+      if (m.code) setCode(m.code);
+      setConn('lobby');
     });
-    startLoop();
-  }, [apply, startLoop]);
+    room.onMessage('lobby', (m: { players: { id: string; name: string }[]; stake: string }) => {
+      const ps = m.players.map((p, i) => ({ id: p.id, name: p.name, slot: i }));
+      playersRef.current = ps;
+      setPlayers(ps);
+      setStakeState(m.stake || '');
+      if (!startedRef.current) setConn('lobby');
+    });
+    room.onMessage('stake', (m: { stake: string }) => setStakeState(m.stake || ''));
+    room.onMessage('start', (m: { names: string[]; stake: string }) => {
+      startedRef.current = true;
+      setNames(m.names || []);
+      setStakeState(m.stake || '');
+      // Слот = позиция моего sessionId в замороженном ростере (= порядок лобби).
+      const slot = playersRef.current.findIndex((p) => p.id === room.sessionId);
+      setMySlot(slot);
+      setConn('playing');
+    });
+    room.onMessage('state', (s: PartyState) => {
+      setState(s);
+      if (s.status === 'matchOver') setConn('ended');
+    });
+    room.onError(() => setConn('error'));
+  }, [disposeRoom]);
 
-  // Хост задаёт ставку («сегодня не работает …») в лобби — рассылается всем.
+  const createRoom = useCallback((name: string): string => {
+    const c = randomCode();
+    setConn('connecting');
+    getClient()
+      .create('party', { code: c, name: (name || 'Player').slice(0, 20) })
+      .then((r) => { wire(r); setCode(c); })
+      .catch(() => setConn('error'));
+    return c;
+  }, [wire]);
+
+  const joinRoom = useCallback((c: string, name: string) => {
+    const cc = c.toUpperCase().trim();
+    setConn('connecting');
+    getClient()
+      .joinOrCreate('party', { code: cc, name: (name || 'Player').slice(0, 20) })
+      .then((r) => { wire(r); setCode(cc); })
+      .catch(() => setConn('error'));
+  }, [wire]);
+
   const setStake = useCallback((text: string) => {
     const t = text.slice(0, 80);
-    stakeRef.current = t;
     setStakeState(t);
-    if (roleRef.current === 'host') {
-      chRef.current?.send({ type: 'broadcast', event: 'pstake', payload: { stake: t } });
-    }
+    roomRef.current?.send('stake', { stake: t });
+  }, []);
+
+  const startMatch = useCallback(() => {
+    roomRef.current?.send('start', {});
   }, []);
 
   const turn = useCallback((dir: Direction) => {
-    const slot = mySlotRef.current;
-    if (slot < 0) return; // зритель
-    if (roleRef.current === 'host') {
-      const cur = stateRef.current;
-      if (cur) apply(partyTurn(cur, slot, dir));
-    } else {
-      chRef.current?.send({ type: 'broadcast', event: 'pinput', payload: { pid: slot, dir } });
-      if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
-      inputRetryRef.current = setTimeout(() => {
-        chRef.current?.send({ type: 'broadcast', event: 'pinput', payload: { pid: slot, dir } });
-      }, 80);
-    }
-  }, [apply]);
+    roomRef.current?.send('input', { dir });
+  }, []);
 
   const leave = useCallback(() => {
-    stopLoop();
-    if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
-    if (breakRef.current) clearTimeout(breakRef.current);
+    disposeRoom();
     startedRef.current = false;
-    rosterRef.current = [];
-    presenceIdsRef.current = [];
-    mySlotRef.current = -1;
-    seqRef.current = 0;
-    lastSeqRef.current = 0;
-    stakeRef.current = '';
-    namesRef.current = [];
-    if (chRef.current) {
-      supabase.removeChannel(chRef.current);
-      chRef.current = null;
-    }
-    roleRef.current = null;
-    stateRef.current = null;
-    setState(null);
-    setPlayers([]);
-    setMySlot(-1);
-    setStakeState('');
-    setNames([]);
+    playersRef.current = [];
+    setConn('idle');
     setRole(null);
     setCode('');
-    setConn('idle');
-  }, [stopLoop]);
+    setPlayers([]);
+    setMySlot(-1);
+    setState(null);
+    setStakeState('');
+    setNames([]);
+  }, [disposeRoom]);
 
-  useEffect(
-    () => () => {
-      if (loopRef.current) clearInterval(loopRef.current);
-      if (breakRef.current) clearTimeout(breakRef.current);
-      if (inputRetryRef.current) clearTimeout(inputRetryRef.current);
-      if (chRef.current) supabase.removeChannel(chRef.current);
-    },
-    [],
-  );
+  useEffect(() => () => { disposeRoom(); }, [disposeRoom]);
 
-  return { conn, role, code, players, mySlot, myId: myIdRef.current, state, stake, names, setStake, createRoom, joinRoom, startMatch, turn, leave };
+  return { conn, role, code, players, mySlot, myId, state, stake, names, setStake, createRoom, joinRoom, startMatch, turn, leave };
 }

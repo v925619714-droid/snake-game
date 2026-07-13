@@ -44,3 +44,4 @@ yarn-error.*
 *.log
 run-web.cmd
 run-static.cmd
+.env.local.supabase-backup
