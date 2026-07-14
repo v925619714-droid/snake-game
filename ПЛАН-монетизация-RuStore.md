@@ -31,11 +31,33 @@ RuStore Billing SDK делает покупку → клиент шлёт `purch
 - Создать 3 consumable-товара с SKU **ровно** `com.kanaewvs.snake.coins100 / .coins600 / .coins1500`, задать цены (₽).
 - Дать **consoleApplicationId** (код приложения из консоли) → в EAS env `EXPO_PUBLIC_RUSTORE_APP_ID`.
 
-## Нужно от Владимира (блокеры)
+## Состояние на 2026-07-14
 
-1. **consoleApplicationId** (код приложения в RuStore Console) — без него SDK не инициализируется.
-2. **Создать 3 товара** (SKU выше) + включить покупки в консоли RuStore.
-3. Подтвердить цены пакетов в ₽ (например 99 / 490 / 990 ₽ — на ваше решение).
+**Готово в коде (Claude, headless, компилируется — tsc 0 / jest 120, non-breaking):**
+- Клиент: `iapProducts.ts`, `iapRustore.ts` (Pay SDK: purchase → invoiceId → серверная валидация → грант), `iap.ts` делегирует по флагу. Под Pay SDK: покупку подтверждает СЕРВЕР (:confirm), клиент — нет.
+- Сервер: `server/src/iap.ts` — роут `POST /iap/rustore/validate` (проверка GoTrue-JWT + Public-Token RuStore + чтение статуса инвойса + идемпотентное начисление). Смонтирован в `index.ts`. Миграция `server/migrations/03-iap.sql` (таблица `processed_purchases` + RPC `grant_coins`, только service_role).
+- URL валидации: `https://snake-rt.skillmake.ru/iap/rustore/validate` → `EXPO_PUBLIC_RUSTORE_VALIDATE_URL`.
+
+⚠️ **RuStore переводит всех с BillingClient на Pay SDK до 01.08.2026** — мы уже на Pay SDK (пакет v10 `sdk/pay/react-native`), это правильный путь, старый BillingClient не брать.
+
+## Что сам сделать НЕ могу (нужен человек)
+
+- **RuStore Console** (app-code + товары): требует вход под аккаунтом разработчика — мне ввод логина/паролей запрещён, а залогиненного Chrome не подключено. → делает Владимир/комп 1.
+- **Тест покупки**: RuStore Billing требует установленного приложения RuStore + авторизации + реальной/тестовой оплаты — **на эмуляторе не работает**, нужен реальный Android-девайс. → комп 1.
+
+## Нужно от Владимира / комп 1 (блокеры)
+
+**1. RuStore Console → взять app-code и создать товары** (console.rustore.ru → приложение Shake Work Off):
+   - Раздел «Монетизация / Платные услуги» → включить покупки.
+   - Создать 3 **потребляемых** (consumable) товара с SKU **ровно**:
+     `com.kanaewvs.snake.coins100`, `com.kanaewvs.snake.coins600`, `com.kanaewvs.snake.coins1500`.
+   - Цены (предлагаю): **99 / 490 / 990 ₽** (подтвердить/поменять).
+   - Скопировать **ID приложения** (число из URL/карточки приложения) — это `consoleApplicationId`.
+
+**2. Сервер 37427** — комп 1 добавляет в `/opt/snake-backend/.env` (значения не в чат/git):
+   `RUSTORE_APP_ID=<app-code>`, `RUSTORE_KEY_ID=2351029770`, `RUSTORE_PRIVATE_KEY=<PEM>`, `JWT_SECRET`/`SERVICE_KEY` (уже есть), затем миграция `03-iap.sql` + пересборка gameserver.
+
+**3. EAS env (профиль production-apk)**: `EXPO_PUBLIC_STORE=rustore`, `EXPO_PUBLIC_RUSTORE_APP_ID=<app-code>`, `EXPO_PUBLIC_RUSTORE_VALIDATE_URL=https://snake-rt.skillmake.ru/iap/rustore/validate`. Плюс `npm i` пакета SDK + `"scheme":"snakerustore"` в app.json (деплинк возврата с оплаты).
 
 ## Тест (комп 1, на устройстве)
 

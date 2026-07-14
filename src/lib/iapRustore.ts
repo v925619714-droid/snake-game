@@ -79,17 +79,17 @@ export async function buyCoinPackRustore(sku: string): Promise<boolean> {
       if (!/cancel/i.test(type)) errCb?.(type || undefined);
       return /cancel/i.test(type); // отмена — не ошибка для UI
     }
-    const purchaseId: string | undefined = res?.response?.purchaseId ?? res?.purchaseId;
-    if (!purchaseId) {
-      errCb?.('no_purchase_id');
+    // Pay SDK (v10): разовые покупки идентифицируются invoiceId; в старых сборках — purchaseId.
+    const payId: string | undefined =
+      res?.response?.invoiceId ?? res?.invoiceId ?? res?.response?.purchaseId ?? res?.purchaseId;
+    if (!payId) {
+      errCb?.('no_invoice_id');
       return false;
     }
-    const granted = await validateAndGrant(purchaseId, sku);
+    // Сервер сам валидирует инвойс и ПОДТВЕРЖДАЕТ покупку (:confirm) — он авторитетен,
+    // поэтому клиентский confirmPurchase не вызываем (иначе двойное подтверждение).
+    const granted = await validateAndGrant(payId, sku);
     if (granted != null && granted > 0) coinsCb?.(granted, sku);
-    // consume: без confirmPurchase RuStore не даст купить consumable повторно.
-    try {
-      await rb.confirmPurchase({ purchaseId });
-    } catch {}
     return granted != null;
   } catch {
     errCb?.();
@@ -99,7 +99,7 @@ export async function buyCoinPackRustore(sku: string): Promise<boolean> {
 
 // Валидация покупки и начисление на нашем сервере. Возвращает дельту монет (0 если уже
 // обработана ранее — идемпотентность на сервере) или null при сбое (монеты НЕ начисляем).
-async function validateAndGrant(purchaseId: string, sku: string): Promise<number | null> {
+async function validateAndGrant(invoiceId: string, sku: string): Promise<number | null> {
   if (!VALIDATE_URL) {
     errCb?.('no_validation'); // сервер валидации не сконфигурирован
     return null;
@@ -113,7 +113,7 @@ async function validateAndGrant(purchaseId: string, sku: string): Promise<number
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ purchaseId, sku }),
+      body: JSON.stringify({ invoiceId, sku }),
     });
     if (!r.ok) {
       errCb?.(`validate_${r.status}`);
