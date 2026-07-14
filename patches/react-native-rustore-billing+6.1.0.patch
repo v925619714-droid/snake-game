@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native-rustore-billing/android/src/main/java/com/rustorebilling/RustoreBillingModule.kt b/node_modules/react-native-rustore-billing/android/src/main/java/com/rustorebilling/RustoreBillingModule.kt
+index 9bf6fea..7156079 100644
+--- a/node_modules/react-native-rustore-billing/android/src/main/java/com/rustorebilling/RustoreBillingModule.kt
++++ b/node_modules/react-native-rustore-billing/android/src/main/java/com/rustorebilling/RustoreBillingModule.kt
+@@ -69,7 +69,7 @@ class RustoreBillingModule(reactContext: ReactApplicationContext) :
+   fun getProducts(productIds: ReadableArray, promise: Promise) {
+     val ids = mutableListOf<String>()
+     for (index in 0 until productIds.size()) {
+-      ids.add(productIds.getString(index))
++      productIds.getString(index)?.let { ids.add(it) }
+     }
+ 
+     billingClient.products.getProducts(ids).addOnSuccessListener { products ->
