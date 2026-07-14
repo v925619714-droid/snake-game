@@ -20,21 +20,29 @@
     },
     "production": {
       "autoIncrement": true,
-      "distribution": "store"
+      "distribution": "store",
+      "credentialsSource": "local"
     },
     "production-apk": {
       "extends": "production",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_STORE": "rustore",
+        "EXPO_PUBLIC_RUSTORE_APP_ID": "2063729727",
+        "EXPO_PUBLIC_RUSTORE_VALIDATE_URL": "https://snake-rt.skillmake.ru/iap/rustore/validate",
+        "EXPO_PUBLIC_RUSTORE_SCHEME": "snakerustore"
       }
     }
   },
   "submit": {
     "production": {
       "ios": {
+        "ascAppId": "6785279802",
         "ascApiKeyPath": "./asc-api-key.p8",
-        "ascApiKeyId": "REPLACE_WITH_ASC_KEY_ID",
-        "ascApiKeyIssuerId": "REPLACE_WITH_ASC_ISSUER_ID"
+        "ascApiKeyId": "S9H5VHSZND",
+        "ascApiKeyIssuerId": "fb076a2d-8a97-4292-b593-2816bc603bf0"
       }
     }
   }

@@ -1,4 +1,4 @@
-// Провайдер покупок для RuStore (нативный react-native-rustore-billing-sdk).
+// Провайдер покупок для RuStore (нативный react-native-rustore-billing, Pay SDK v6).
 // Активен только на RuStore-сборке (EXPO_PUBLIC_STORE=rustore) — выбор делает iap.ts.
 // Отличие от expo-iap: покупка промис-based (purchaseProduct → confirmPurchase), а начисление
 // монет идёт ЧЕРЕЗ НАШ СЕРВЕР: purchaseId валидируется на бэкенде (RuStore API), сервер
@@ -14,7 +14,7 @@ type RustoreModule = any;
 let rb: RustoreModule | null = null;
 if (Platform.OS === 'android') {
   try {
-    const m = require('react-native-rustore-billing-sdk');
+    const m = require('react-native-rustore-billing');
     rb = m?.default ?? m;
   } catch {}
 }
@@ -52,9 +52,12 @@ export function initIapRustore(
 export async function fetchCoinPacksRustore(): Promise<CoinPack[]> {
   if (!rb || !APP_ID) return [];
   try {
-    // На части устройств покупки недоступны (нет RuStore/не залогинен) — тогда прячем секцию.
+    // На части устройств покупки недоступны (нет RuStore/не залогинен). SDK v6 возвращает
+    // Boolean|string: true = доступно, иначе (false / строка-причина) — недоступно.
+    // Прячем секцию только при ЯВНОМ false (безопасное смещение: не скрыть на рабочем
+    // устройстве, если SDK вернул строку/нестандартное значение — тогда решит getProducts).
     const avail = await rb.checkPurchasesAvailability?.().catch(() => null);
-    if (avail && avail.isAvailable === false) return [];
+    if (avail === false) return [];
     const raw = await rb.getProducts(COIN_PACKS.map((p) => p.sku));
     const list: { productId?: string; id?: string; priceLabel?: string; price?: string }[] =
       Array.isArray(raw) ? raw : (raw?.products ?? []);

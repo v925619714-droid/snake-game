@@ -4,6 +4,7 @@
     "slug": "snake",
     "owner": "kanaewvs-team",
     "version": "1.2.0",
+    "scheme": "snakerustore",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -42,6 +43,14 @@
     "plugins": [
       "expo-font",
       "expo-iap",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": ["https://artifactory-external.vkpartner.ru/artifactory/maven"]
+          }
+        }
+      ],
       [
         "expo-splash-screen",
         {
