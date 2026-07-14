@@ -20,7 +20,19 @@ import type { Request, Response } from 'express';
 
 const APP_ID = process.env.RUSTORE_APP_ID || '';
 const KEY_ID = process.env.RUSTORE_KEY_ID || '';
-const PRIVATE_KEY = (process.env.RUSTORE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+// Приватный ключ RuStore: либо путь к .pem-файлу (RUSTORE_PRIVATE_KEY_FILE, предпочтительно —
+// монтируем файл в контейнер), либо сам PEM в env (RUSTORE_PRIVATE_KEY, \n экранированы).
+const PRIVATE_KEY = (() => {
+  const file = process.env.RUSTORE_PRIVATE_KEY_FILE;
+  if (file) {
+    try {
+      return require('fs').readFileSync(file, 'utf8');
+    } catch {
+      return '';
+    }
+  }
+  return (process.env.RUSTORE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+})();
 const JWT_SECRET = process.env.JWT_SECRET || '';
 const REST_URL = process.env.PGRST_URL || 'http://postgrest:3000';
 const SERVICE_KEY = process.env.SERVICE_KEY || '';
